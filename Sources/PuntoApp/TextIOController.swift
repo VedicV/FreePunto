@@ -35,7 +35,8 @@ final class TextIOController {
 
         // 1. Сначала пробуем текущее выделение через Accessibility (если доступно).
         if let focused = focusedElement,
-           let selection = readSelectedTextWithAccessibility(focused: focused) {
+            let selection = readSelectedTextWithAccessibility(focused: focused)
+        {
             return TextTarget(
                 text: selection.text,
                 source: .selectedText,
@@ -46,7 +47,9 @@ final class TextIOController {
 
         // 2. Если Accessibility не доступно, пробуем скопировать текущее выделение через буфер обмена.
         if focusedElement == nil {
-            if let copiedSelection = copySelectedTextThroughPasteboard(timeout: 0.03), !copiedSelection.isEmpty {
+            if let copiedSelection = copySelectedTextThroughPasteboard(timeout: 0.03),
+                !copiedSelection.isEmpty
+            {
                 return TextTarget(
                     text: copiedSelection,
                     source: .selectedText,
@@ -58,7 +61,8 @@ final class TextIOController {
 
         // 3. Если выделения нет и доступно Accessibility, берем слово перед курсором через Accessibility.
         if let focused = focusedElement,
-           let selection = readPreviousWordWithAccessibility(focused: focused) {
+            let selection = readPreviousWordWithAccessibility(focused: focused)
+        {
             return TextTarget(
                 text: selection.text,
                 source: .previousWord,
@@ -85,7 +89,10 @@ final class TextIOController {
     // * -- Замена текущего выделения --
     func replace(_ target: TextTarget, with replacement: String) -> Bool {
         if let selection = target.accessibilitySelection,
-           replaceWithAccessibility(selection, replacement: replacement, trailingSpacesCount: target.trailingSpacesCount) {
+            replaceWithAccessibility(
+                selection, replacement: replacement, trailingSpacesCount: target.trailingSpacesCount
+            )
+        {
             return true
         }
 
@@ -100,7 +107,9 @@ final class TextIOController {
     }
 
     // Прямая замена через AX стабильнее для команд из меню: фокус мог временно уйти в меню.
-    private func replaceWithAccessibility(_ selection: AccessibilitySelection, replacement: String, trailingSpacesCount: Int) -> Bool {
+    private func replaceWithAccessibility(
+        _ selection: AccessibilitySelection, replacement: String, trailingSpacesCount: Int
+    ) -> Bool {
         if let selectedRange = selection.selectedRange {
             _ = setSelectedTextRange(selectedRange, for: selection.element)
         }
@@ -112,16 +121,18 @@ final class TextIOController {
         )
         if selectedTextResult == .success {
             if trailingSpacesCount > 0, let selectedRange = selection.selectedRange {
-                let newCaretLocation = selectedRange.location + (replacement as NSString).length + trailingSpacesCount
-                _ = setSelectedTextRange(CFRange(location: newCaretLocation, length: 0), for: selection.element)
+                let newCaretLocation =
+                    selectedRange.location + (replacement as NSString).length + trailingSpacesCount
+                _ = setSelectedTextRange(
+                    CFRange(location: newCaretLocation, length: 0), for: selection.element)
             }
             return true
         }
 
         guard let selectedRange = selection.selectedRange,
-              let currentValue = selection.currentValue,
-              selectedRange.location >= 0,
-              selectedRange.length >= 0
+            let currentValue = selection.currentValue,
+            selectedRange.location >= 0,
+            selectedRange.length >= 0
         else {
             return false
         }
@@ -144,7 +155,8 @@ final class TextIOController {
             return false
         }
 
-        let caret = CFRange(location: selectedRange.location + (replacement as NSString).length, length: 0)
+        let caret = CFRange(
+            location: selectedRange.location + (replacement as NSString).length, length: 0)
         _ = setSelectedTextRange(caret, for: selection.element)
         return true
     }
@@ -166,9 +178,10 @@ final class TextIOController {
     }
 
     // Читаем выделенный текст из focused AX element.
-    private func readSelectedTextWithAccessibility(focused: AXUIElement) -> AccessibilitySelection? {
+    private func readSelectedTextWithAccessibility(focused: AXUIElement) -> AccessibilitySelection?
+    {
         guard let selected = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused),
-              !selected.isEmpty
+            !selected.isEmpty
         else {
             return nil
         }
@@ -183,10 +196,11 @@ final class TextIOController {
     }
 
     // Читаем слово перед курсором через Accessibility, если выделения нет.
-    private func readPreviousWordWithAccessibility(focused: AXUIElement) -> AccessibilitySelection? {
+    private func readPreviousWordWithAccessibility(focused: AXUIElement) -> AccessibilitySelection?
+    {
         guard let range = selectedTextRange(from: focused),
-              range.length == 0,
-              let value = stringAttribute(kAXValueAttribute as CFString, from: focused)
+            range.length == 0,
+            let value = stringAttribute(kAXValueAttribute as CFString, from: focused)
         else {
             return nil
         }
@@ -212,8 +226,11 @@ final class TextIOController {
         let wordText = leftStringCut[..<endIndex]
         let wordStartIndex: Int
         let word: String
-        if let lastWhitespaceRange = wordText.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards) {
-            wordStartIndex = leftStringCut.distance(from: leftStringCut.startIndex, to: lastWhitespaceRange.upperBound)
+        if let lastWhitespaceRange = wordText.rangeOfCharacter(
+            from: .whitespacesAndNewlines, options: .backwards)
+        {
+            wordStartIndex = leftStringCut.distance(
+                from: leftStringCut.startIndex, to: lastWhitespaceRange.upperBound)
             word = String(wordText.suffix(from: lastWhitespaceRange.upperBound))
         } else {
             wordStartIndex = 0
@@ -237,9 +254,12 @@ final class TextIOController {
     }
 
     // Клавиатурный fallback для выделения слова до курсора (через выделение до начала строки).
-    private func selectAndCopyPreviousWordThroughKeyboard() -> (word: String, trailingSpacesCount: Int)? {
+    private func selectAndCopyPreviousWordThroughKeyboard() -> (
+        word: String, trailingSpacesCount: Int
+    )? {
         // 1. Выделяем текст от курсора до начала строки: Cmd+Shift+Left
-        guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: [.maskCommand, .maskShift]) else {
+        guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: [.maskCommand, .maskShift])
+        else {
             return nil
         }
         waitForKeyboardSideEffects(timeout: pollStep)
@@ -258,7 +278,7 @@ final class TextIOController {
 
         // 4. Находим последнее слово (разделители — только пробелы и новые строки)
         let trimmedLine = lineText.trimmingCharacters(in: .newlines)
-        
+
         // Пропускаем хвостовые пробелы
         var endIndex = trimmedLine.endIndex
         while endIndex > trimmedLine.startIndex {
@@ -269,10 +289,12 @@ final class TextIOController {
                 break
             }
         }
-        
+
         let wordText = trimmedLine[..<endIndex]
         let word: String
-        if let lastWhitespaceRange = wordText.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards) {
+        if let lastWhitespaceRange = wordText.rangeOfCharacter(
+            from: .whitespacesAndNewlines, options: .backwards)
+        {
             word = String(wordText.suffix(from: lastWhitespaceRange.upperBound))
         } else {
             word = String(wordText)
@@ -316,8 +338,8 @@ final class TextIOController {
         )
 
         guard focusedResult == .success,
-              let focusedValue,
-              CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
+            let focusedValue,
+            CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
         else {
             return nil
         }
@@ -344,8 +366,8 @@ final class TextIOController {
         )
 
         guard selectedResult == .success,
-              let selectedValue,
-              CFGetTypeID(selectedValue) == AXValueGetTypeID()
+            let selectedValue,
+            CFGetTypeID(selectedValue) == AXValueGetTypeID()
         else {
             return nil
         }
@@ -386,8 +408,6 @@ final class TextIOController {
         snapshot.restore(to: pasteboard)
         return copied
     }
-
-
 
     // Отправляем системный key down/up.
     private func sendKeyboardShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {

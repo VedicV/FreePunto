@@ -31,6 +31,20 @@ public enum LayoutTransformer {
             return text
         }
 
+        // Если переводим с английского на кириллицу (русский/украинский), и в конце есть точки,
+        // сохраняем их как точки, а не превращаем в букву "ю".
+        if source == .english && (target == .russian || target == .ukrainian) {
+            let dotsCount = text.reversed().prefix(while: { $0 == "." }).count
+            if dotsCount > 0 {
+                let prefix = text.dropLast(dotsCount)
+                let suffix = text.suffix(dotsCount)
+                let transformedPrefix = prefix.map { character in
+                    transform(character, from: source, to: target)
+                }.joined()
+                return transformedPrefix + String(suffix)
+            }
+        }
+
         return text.map { character in
             transform(character, from: source, to: target)
         }.joined()

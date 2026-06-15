@@ -142,6 +142,14 @@ final class PuntoCoreTests: XCTestCase {
 
     func testPunctuationWhitespaceAndUnmappedCharactersArePreserved() {
         XCTAssertEqual(
+            LayoutTransformer.transform("ghbdtn.", from: .english, to: .russian),
+            "привет."
+        )
+        XCTAssertEqual(
+            LayoutTransformer.transform("ghbdtn...", from: .english, to: .russian),
+            "привет..."
+        )
+        XCTAssertEqual(
             LayoutTransformer.transform("hi  123\t🙂\n[]", from: .english, to: .ukrainian),
             "рш  123\t🙂\nхї"
         )
