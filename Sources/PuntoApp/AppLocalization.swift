@@ -1,7 +1,7 @@
 import Foundation
 import PuntoCore
 
-// * -- Локализация меню и настроек --
+// * -- Локалізація меню і налаштувань --
 enum AppText {
     enum Key: String {
         case pause
@@ -47,7 +47,7 @@ enum AppText {
         case fixedTargetMode
     }
 
-    // * -- Текст по ключу --
+    // * -- Текст за ключем --
     static func get(_ key: Key, _ language: InterfaceLanguage) -> String {
         switch language {
         case .russian:

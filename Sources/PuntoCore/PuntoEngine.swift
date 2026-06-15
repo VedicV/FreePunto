@@ -1,8 +1,8 @@
 import Foundation
 
-// * -- Центральный движок преобразований --
+// * -- Центральний двигун перетворень --
 public final class PuntoEngine: @unchecked Sendable {
-    // Хранит последний шаг, чтобы повторное нажатие шло по тому же циклу языков.
+    // Зберігає останній крок, щоб повторне натискання йшло тим самим циклом мов.
     private struct LayoutContext {
         var textAfterConversion: String
         var originalLanguage: PuntoLanguage
@@ -15,12 +15,12 @@ public final class PuntoEngine: @unchecked Sendable {
 
     public init() {}
 
-    // * -- Сброс контекста повторного преобразования --
+    // * -- Скидання контексту повторного перетворення --
     public func resetContext() {
         layoutContext = nil
     }
 
-    // * -- Переключение раскладки по физическим клавишам --
+    // * -- Перемикання розкладки за фізичними клавішами --
     public func convertLayout(_ text: String, settings: PuntoSettings) -> TransformationResult {
         let fallback = layoutContext?.currentLanguage ?? .english
         let detectedSource = LanguageDetector.detect(text, fallback: fallback)
@@ -31,7 +31,7 @@ public final class PuntoEngine: @unchecked Sendable {
 
         switch settings.switchingMode {
         case .sequential:
-            // Если пользователь снова нажал на уже преобразованный фрагмент, продолжаем прежний цикл.
+            // Якщо користувач знову натиснув на вже перетворений фрагмент, продовжуємо попередній цикл.
             if let context = layoutContext,
                context.textAfterConversion == text,
                context.switchingMode == settings.switchingMode,
@@ -75,7 +75,7 @@ public final class PuntoEngine: @unchecked Sendable {
         )
     }
 
-    // * -- Преобразование регистра --
+    // * -- Перетворення регістру --
     public func convertCase(_ text: String, mode: CaseMode) -> TransformationResult {
         layoutContext = nil
         return TransformationResult(
@@ -87,13 +87,13 @@ public final class PuntoEngine: @unchecked Sendable {
         )
     }
 
-    // * -- Транслитерация отдельной командой --
+    // * -- Транслітерація окремою командою --
     public func transliterate(_ text: String, targetLanguage: PuntoLanguage) -> TransformationResult {
         layoutContext = nil
         return Transliterator.transliterate(text, targetLanguage: targetLanguage)
     }
 
-    // * -- Подсказка для статусной иконки --
+    // * -- Підказка для статусної іконки --
     public func nextLayoutLanguageHint(settings: PuntoSettings) -> PuntoLanguage {
         guard settings.isEnabled else {
             return layoutContext?.currentLanguage ?? settings.fixedTargetLanguage
@@ -111,7 +111,7 @@ public final class PuntoEngine: @unchecked Sendable {
         }
     }
 
-    // Цикл зависит от языка исходного фрагмента, чтобы повторными нажатиями можно было вернуться назад.
+    // Цикл залежить від мови початкового фрагмента, щоб повторними натисканнями можна було повернутися назад.
     private static func cycle(startingWith language: PuntoLanguage) -> [PuntoLanguage] {
         switch language {
         case .english:

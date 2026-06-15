@@ -1,6 +1,6 @@
 import Foundation
 
-// * -- Фонетическая транслитерация --
+// * -- Фонетична транслітерація --
 public enum Transliterator {
     private static let russianToLatin: [String: String] = [
         "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
@@ -38,7 +38,7 @@ public enum Transliterator {
         ("t", "т"), ("u", "у"), ("f", "ф"), ("c", "к"),
     ]
 
-    // * -- Выбор направления транслитерации --
+    // * -- Вибір напряму транслітерації --
     public static func transliterate(_ text: String, targetLanguage: PuntoLanguage)
         -> TransformationResult
     {
@@ -65,7 +65,7 @@ public enum Transliterator {
         )
     }
 
-    // Кириллицу можно обрабатывать посимвольно: каждая буква имеет самостоятельную латинскую замену.
+    // Кирилицю можна обробляти посимвольно: кожна літера має самостійну латинську заміну.
     private static func cyrillicToLatin(_ text: String, sourceLanguage: PuntoLanguage) -> String {
         let table = sourceLanguage == .ukrainian ? ukrainianToLatin : russianToLatin
         return text.map { character in
@@ -78,7 +78,7 @@ public enum Transliterator {
         }.joined()
     }
 
-    // Латиницу читаем самым длинным совпадением, чтобы `shch` не распалось на `sh` + `ch`.
+    // Латиницю читаємо найдовшим збігом, щоб `shch` не розпалося на `sh` + `ch`.
     private static func latinToCyrillic(_ text: String, targetLanguage: PuntoLanguage) -> String {
         let table = targetLanguage == .ukrainian ? latinToUkrainian : latinToRussian
         var result = ""
@@ -109,7 +109,7 @@ public enum Transliterator {
         return result
     }
 
-    // Для смешанного текста даем приоритет буквам, характерным для конкретного языка.
+    // Для змішаного тексту надаємо пріоритет літерам, характерним для конкретної мови.
     private static func detectCyrillicSourceLanguage(_ text: String, fallback: PuntoLanguage)
         -> PuntoLanguage
     {
@@ -131,7 +131,7 @@ public enum Transliterator {
         return text.unicodeScalars.contains(where: { charset.contains($0) })
     }
 
-    // Регистр переносится с исходного фрагмента на замену, включая многобуквенные сочетания.
+    // Регістр переноситься з початкового фрагмента на заміну, включно з багатолітерними сполученнями.
     private static func preserveCase(from original: String, replacement: String) -> String {
         guard original != original.lowercased() else {
             return replacement

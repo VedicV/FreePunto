@@ -1,7 +1,7 @@
 import AppKit
 import PuntoCore
 
-// * -- Главный контроллер menu bar приложения --
+// * -- Головний контролер menu bar застосунку --
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState()
     private let textIO = TextIOController()
@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeys: HotKeyController?
     private var settingsWindowController: SettingsWindowController?
 
-    // * -- Запуск приложения и подключение системных обработчиков --
+    // * -- Запуск застосунку і підключення системних обробників --
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         state.onSettingsChanged = { [weak self] in
@@ -37,12 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // * -- Остановка глобальных обработчиков --
+    // * -- Зупинка глобальних обробників --
     func applicationWillTerminate(_ notification: Notification) {
         hotKeys?.stop()
     }
 
-    // * -- Применение измененных настроек --
+    // * -- Застосування змінених налаштувань --
     private func refreshAfterSettingsChange() {
         if Diagnostics.accessibilityTrusted(prompt: false) {
             hotKeys?.start()
@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
-    // * -- Сборка меню status bar --
+    // * -- Збирання меню status bar --
     private func rebuildMenu() {
         guard let statusItem else {
             return
@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    // * -- Иконка status bar --
+    // * -- Іконка status bar --
     private func statusIcon() -> NSImage {
         guard state.settings.isEnabled else {
             return StatusIconFactory.make(.paused)
@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
     }
 
-    // Tooltip оставляем текстовым, чтобы по hover было понятно текущее состояние.
+    // Tooltip залишаємо текстовим, щоб на hover був зрозумілий поточний стан.
     private func statusTooltip() -> String {
         guard state.settings.isEnabled else {
             return "FreePunto: PAUSE"
@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // Меню режима переключения.
+    // Меню режиму перемикання.
     private func modeMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: t(.switchingMode), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -136,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // Меню фиксированной цели.
+    // Меню фіксованої цілі.
     private func fixedTargetMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: t(.fixedTarget), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // Меню цели транслитерации.
+    // Меню цілі транслітерації.
     private func transliterationTargetMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: t(.transliterationTarget), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // Меню режима регистра.
+    // Меню режиму регістру.
     private func caseModeMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: t(.caseMode), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -195,32 +195,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // * -- Общий сценарий текстовой команды --
+    // * -- Загальний сценарій текстової команди --
     private func performTextCommand(_ command: (String) -> TransformationResult) {
         guard state.settings.isEnabled else {
             return
         }
 
-        // Читаем выделение или предыдущее слово.
+        // Читаємо виділення або попереднє слово.
         guard let target = textIO.readTarget() else {
             NSSound.beep()
             return
         }
 
-        // Выполняем преобразование и пропускаем результат без изменений.
+        // Виконуємо перетворення і пропускаємо результат без змін.
         let result = command(target.text)
         guard result.didChange else {
             NSSound.beep()
             return
         }
 
-        // Заменяем текущий выбор через системный ввод.
+        // Замінюємо поточний вибір через системне введення.
         guard textIO.replace(target, with: result.replacementText) else {
             Diagnostics.showError(t(.couldNotReplaceText), language: state.settings.interfaceLanguage)
             return
         }
 
-        // Синхронизируем macOS input source с языком результата.
+        // Синхронізуємо macOS input source з мовою результату.
         if let targetLanguage = result.targetLanguage,
            !inputSources.selectInputSource(for: targetLanguage) {
             Diagnostics.showError(
@@ -233,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
-    // * -- Команда смены раскладки --
+    // * -- Команда зміни розкладки --
     @objc private func convertLayoutFromMenu() {
         performLayoutConversion()
     }
@@ -244,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // * -- Команда смены регистра --
+    // * -- Команда зміни регістру --
     @objc private func changeCaseFromMenu() {
         performCaseConversion()
     }
@@ -255,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // * -- Команда транслитерации --
+    // * -- Команда транслітерації --
     @objc private func transliterateFromMenu() {
         performTransliteration()
     }
@@ -270,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.toggleEnabled()
     }
 
-    // * -- Настройки режима переключения --
+    // * -- Налаштування режиму перемикання --
     @objc private func setSwitchingMode(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let mode = SwitchingMode(rawValue: rawValue) else {
@@ -280,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.engine.resetContext()
     }
 
-    // * -- Настройка фиксированной цели --
+    // * -- Налаштування фіксованої цілі --
     @objc private func setFixedTarget(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let language = PuntoLanguage(rawValue: rawValue) else {
@@ -290,7 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.engine.resetContext()
     }
 
-    // * -- Настройка цели транслитерации --
+    // * -- Налаштування цілі транслітерації --
     @objc private func setTransliterationTarget(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let language = PuntoLanguage(rawValue: rawValue) else {
@@ -299,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.settings.transliterationTargetLanguage = language
     }
 
-    // * -- Настройка режима регистра --
+    // * -- Налаштування режиму регістру --
     @objc private func setCaseMode(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let mode = CaseMode(rawValue: rawValue) else {
@@ -317,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.refreshContent()
     }
 
-    // * -- Окно настроек --
+    // * -- Вікно налаштувань --
     @objc private func openSettings() {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(state: state)
@@ -326,7 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // * -- Переключение запуска при входе --
+    // * -- Перемикання запуску при вході --
     @objc private func toggleLaunchAtLogin() {
         let requestedValue = !state.settings.launchAtLogin
 

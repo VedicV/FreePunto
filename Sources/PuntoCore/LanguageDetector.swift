@@ -1,8 +1,8 @@
 import Foundation
 
-// * -- Простое определение языка фрагмента --
+// * -- Просте визначення мови фрагмента --
 public enum LanguageDetector {
-    // * -- Выбор доминирующей письменности --
+    // * -- Вибір домінантної писемності --
     public static func detect(_ text: String, fallback: PuntoLanguage = .english) -> PuntoLanguage {
         var latin = 0
         var cyrillic = 0
@@ -38,7 +38,7 @@ public enum LanguageDetector {
         return .russian
     }
 
-    // * -- Быстрая проверка направления транслитерации --
+    // * -- Швидка перевірка напряму транслітерації --
     public static func containsCyrillic(_ text: String) -> Bool {
         text.unicodeScalars.contains(where: isCyrillic)
     }

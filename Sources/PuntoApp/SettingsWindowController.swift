@@ -1,13 +1,13 @@
 import AppKit
 import PuntoCore
 
-// * -- Окно настроек --
+// * -- Вікно налаштувань --
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let state: AppState
     private var recordingMonitor: Any?
     private var sleeves: [ClosureSleeve] = []
 
-    // * -- Создание окна --
+    // * -- Створення вікна --
     init(state: AppState) {
         self.state = state
         let window = NSWindow(
@@ -31,7 +31,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         buildContent()
     }
 
-    // * -- Сборка окна настроек --
+    // * -- Збирання вікна налаштувань --
     private func buildContent() {
         stopRecording()
         sleeves = []
@@ -44,7 +44,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        // Основные настройки приложения.
+        // Основні налаштування застосунку.
         stack.addArrangedSubview(makeCheckbox(
             title: t(.enabled),
             isOn: state.settings.isEnabled,
@@ -58,7 +58,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             values: SwitchingMode.allCases,
             selected: state.settings.switchingMode,
             titleProvider: { [weak self] mode in
-                AppText.switchingModeTitle(mode, self?.state.settings.interfaceLanguage ?? .russian)
+                AppText.switchingModeTitle(mode, self?.state.settings.interfaceLanguage ?? .systemDefault)
             },
             action: { [weak self] mode in
                 self?.state.settings.switchingMode = mode
@@ -92,7 +92,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             values: CaseMode.allCases,
             selected: state.settings.caseMode,
             titleProvider: { [weak self] mode in
-                AppText.caseModeTitle(mode, self?.state.settings.interfaceLanguage ?? .russian)
+                AppText.caseModeTitle(mode, self?.state.settings.interfaceLanguage ?? .systemDefault)
             },
             action: { [weak self] mode in self?.state.settings.caseMode = mode }
         ))
@@ -109,7 +109,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ))
 
         stack.addArrangedSubview(separator())
-        // Настройки горячих клавиш.
+        // Налаштування гарячих клавіш.
         stack.addArrangedSubview(makeMainHotKeyRow())
         stack.addArrangedSubview(makeHotKeyRow(
             title: t(.caseHotkey),
@@ -128,7 +128,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ))
 
         stack.addArrangedSubview(separator())
-        // Доступы macOS.
+        // Доступи macOS.
         let permissions = NSButton(title: t(.openPermissions), target: self, action: #selector(openPermissions))
         stack.addArrangedSubview(permissions)
 
@@ -143,7 +143,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
     }
 
-    // Базовый checkbox с closure-обработчиком.
+    // Базовий checkbox із closure-обробником.
     private func makeCheckbox(title: String, isOn: Bool, action: @escaping (Bool) -> Void) -> NSView {
         let button = NSButton(checkboxWithTitle: title, target: nil, action: nil)
         button.state = isOn ? .on : .off
@@ -155,7 +155,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return button
     }
 
-    // Checkbox запуска при входе с обработкой ошибки ServiceManagement.
+    // Checkbox запуску при вході з обробкою помилки ServiceManagement.
     private func makeLaunchAtLoginCheckbox() -> NSView {
         let button = NSButton(checkboxWithTitle: t(.launchAtLogin), target: nil, action: nil)
         button.state = state.settings.launchAtLogin ? .on : .off
@@ -176,7 +176,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return button
     }
 
-    // Универсальная строка popup-выбора.
+    // Універсальний рядок popup-вибору.
     private func makePopupRow<Value: Equatable>(
         title: String,
         values: [Value],
@@ -207,7 +207,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
-    // Настройка основной команды: по умолчанию Control, но можно записать явную комбинацию.
+    // Налаштування основної команди: за замовчуванням Control, але можна записати явну комбінацію.
     private func makeMainHotKeyRow() -> NSView {
         let row = rowStack()
         row.addArrangedSubview(label(t(.mainHotkey)))
@@ -241,7 +241,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
-    // Строка записи горячей клавиши.
+    // Рядок запису гарячої клавіші.
     private func makeHotKeyRow(title: String, hotKey: HotKey, update: @escaping (HotKey) -> Void) -> NSView {
         let row = rowStack()
         row.addArrangedSubview(label(title))
@@ -264,7 +264,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
-    // Локальная запись следующего keyDown для настройки hotkey.
+    // Локальний запис наступного keyDown для налаштування hotkey.
     private func startRecording(button: NSButton, update: @escaping (HotKey) -> Void) {
         stopRecording()
         button.title = t(.pressKeys)
@@ -291,7 +291,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stopRecording()
     }
 
-    // Удерживаем target-объекты AppKit, чтобы closure не освобождались.
+    // Утримуємо target-об'єкти AppKit, щоб closure не звільнялися.
     private func retainSleeve(_ closure: @escaping () -> Void) -> ClosureSleeve {
         let sleeve = ClosureSleeve(closure)
         sleeves.append(sleeve)

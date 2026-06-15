@@ -8,7 +8,7 @@ enum Diagnostics {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    static func showPermissionsWindow(language: InterfaceLanguage = .russian) {
+    static func showPermissionsWindow(language: InterfaceLanguage = .systemDefault) {
         let trusted = accessibilityTrusted(prompt: true)
         let alert = NSAlert()
         alert.messageText = AppText.get(.permissionsTitle, language)
@@ -19,7 +19,7 @@ enum Diagnostics {
         alert.runModal()
     }
 
-    static func showError(_ message: String, detail: String? = nil, language: InterfaceLanguage = .russian) {
+    static func showError(_ message: String, detail: String? = nil, language: InterfaceLanguage = .systemDefault) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message

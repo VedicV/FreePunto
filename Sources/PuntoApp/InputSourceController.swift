@@ -2,9 +2,9 @@ import Carbon
 import Foundation
 import PuntoCore
 
-// * -- Переключение системной раскладки macOS --
+// * -- Перемикання системної розкладки macOS --
 final class InputSourceController {
-    // * -- Выбор раскладки для языка результата --
+    // * -- Вибір розкладки для мови результату --
     @discardableResult
     func selectInputSource(for language: PuntoLanguage) -> Bool {
         guard let source = findInputSource(for: language) else {
@@ -14,7 +14,7 @@ final class InputSourceController {
         return TISSelectInputSource(source) == noErr
     }
 
-    // Ищем selectable keyboard input source по языковому коду.
+    // Шукаємо selectable keyboard input source за мовним кодом.
     private func findInputSource(for language: PuntoLanguage) -> TISInputSource? {
         guard let categoryKey = kTISPropertyInputSourceCategory,
             let keyboardCategory = kTISCategoryKeyboardInputSource
@@ -50,7 +50,7 @@ final class InputSourceController {
         return nil
     }
 
-    // Отбрасываем источники, которые нельзя выбрать.
+    // Відкидаємо джерела, які не можна вибрати.
     private func sourceIsSelectable(_ source: TISInputSource) -> Bool {
         guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable)
         else {
@@ -59,7 +59,7 @@ final class InputSourceController {
         return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue())
     }
 
-    // Сравниваем языки input source с кодом PuntoLanguage.
+    // Порівнюємо мови input source з кодом PuntoLanguage.
     private func sourceMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
         guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
             return false

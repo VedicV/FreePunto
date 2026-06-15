@@ -1,6 +1,6 @@
 import Foundation
 
-// * -- Преобразование раскладки через физические клавиши --
+// * -- Перетворення розкладки через фізичні клавіші --
 public enum LayoutTransformer {
     private static let englishToRussian: [String: String] = [
         "`": "ё",
@@ -25,14 +25,14 @@ public enum LayoutTransformer {
     private static let russianToEnglish = Dictionary(uniqueKeysWithValues: englishToRussian.map { ($0.value, $0.key) })
     private static let ukrainianToEnglish = Dictionary(uniqueKeysWithValues: englishToUkrainian.map { ($0.value, $0.key) })
 
-    // * -- Преобразование текста между раскладками --
+    // * -- Перетворення тексту між розкладками --
     public static func transform(_ text: String, from source: PuntoLanguage, to target: PuntoLanguage) -> String {
         guard source != target else {
             return text
         }
 
-        // Если переводим с английского на кириллицу (русский/украинский), и в конце есть точки,
-        // сохраняем их как точки, а не превращаем в букву "ю".
+        // Якщо переводимо з англійської на кирилицю (російську/українську), і в кінці є крапки,
+        // зберігаємо їх як крапки, а не перетворюємо на літеру "ю".
         if source == .english && (target == .russian || target == .ukrainian) {
             let dotsCount = text.reversed().prefix(while: { $0 == "." }).count
             if dotsCount > 0 {
@@ -50,7 +50,7 @@ public enum LayoutTransformer {
         }.joined()
     }
 
-    // Каждый символ сначала приводится к общей EN-клавише, затем переводится в целевую раскладку.
+    // Кожен символ спочатку приводиться до спільної EN-клавіші, потім переводиться в цільову розкладку.
     private static func transform(_ character: Character, from source: PuntoLanguage, to target: PuntoLanguage) -> String {
         let original = String(character)
         let lower = original.lowercased()
@@ -85,7 +85,7 @@ public enum LayoutTransformer {
         }
     }
 
-    // Сохраняем регистр символа, но не трогаем пробелы, пунктуацию и неизвестные символы.
+    // Зберігаємо регістр символа, але не чіпаємо пробіли, пунктуацію і невідомі символи.
     private static func preserveLetterCase(from original: String, replacement: String) -> String {
         guard original != original.lowercased() else {
             return replacement

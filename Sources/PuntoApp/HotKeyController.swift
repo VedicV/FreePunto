@@ -1,7 +1,7 @@
 import AppKit
 import PuntoCore
 
-// * -- Глобальные горячие клавиши --
+// * -- Глобальні гарячі клавіші --
 final class HotKeyController {
     struct Actions {
         var main: () -> Void
@@ -21,7 +21,7 @@ final class HotKeyController {
         self.actions = actions
     }
 
-    // * -- Подключение глобального перехватчика клавиш --
+    // * -- Підключення глобального перехоплювача клавіш --
     func start() {
         stop()
 
@@ -69,7 +69,7 @@ final class HotKeyController {
         CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
-    // * -- Отключение глобального перехватчика клавиш --
+    // * -- Вимкнення глобального перехоплювача клавіш --
     func stop() {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
@@ -82,9 +82,9 @@ final class HotKeyController {
         singleControlCandidate = false
     }
 
-    // * -- Обработка события клавиатуры --
+    // * -- Обробка події клавіатури --
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // Восстанавливаем tap после системного отключения.
+        // Відновлюємо tap після системного вимкнення.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -94,13 +94,13 @@ final class HotKeyController {
 
         let settings = settingsProvider()
 
-        // Любой клик мыши отменяет кандидата на одиночное нажатие Control
+        // Будь-який клік миші скасовує кандидата на одиночне натискання Control.
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             singleControlCandidate = false
             return Unmanaged.passUnretained(event)
         }
 
-        // Одиночный Control отслеживается через flagsChanged, а не через keyDown.
+        // Одиночний Control відстежується через flagsChanged, а не через keyDown.
         if type == .flagsChanged {
             handleFlagsChanged(event: event, settings: settings)
             return Unmanaged.passUnretained(event)
@@ -112,13 +112,13 @@ final class HotKeyController {
 
         singleControlCandidate = false
 
-        // Pause работает даже при выключенном FreePunto.
+        // Pause працює навіть при вимкненому FreePunto.
         if matches(settings.pauseHotKey, event: event) {
             DispatchQueue.main.async(execute: actions.pause)
             return nil
         }
 
-        // Остальные команды доступны только во включенном состоянии.
+        // Інші команди доступні тільки в увімкненому стані.
         guard settings.isEnabled else {
             return Unmanaged.passUnretained(event)
         }
@@ -141,7 +141,7 @@ final class HotKeyController {
         return Unmanaged.passUnretained(event)
     }
 
-    // Отслеживаем нажатие и отпускание одиночного Control.
+    // Відстежуємо натискання і відпускання одиночного Control.
     private func handleFlagsChanged(event: CGEvent, settings: PuntoSettings) {
         guard settings.mainHotKey.kind == .singleControl else {
             singleControlCandidate = false
@@ -164,7 +164,7 @@ final class HotKeyController {
         }
     }
 
-    // Сравниваем keyCode и нормализованные модификаторы.
+    // Порівнюємо keyCode і нормалізовані модифікатори.
     private func matches(_ hotKey: HotKey, event: CGEvent) -> Bool {
         guard hotKey.kind == .keyCombination,
               let keyCode = hotKey.keyCode,

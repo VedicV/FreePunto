@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-// * -- Текстовая цель команды --
+// * -- Текстова ціль команди --
 struct TextTarget {
     let text: String
     let source: Source
@@ -63,7 +63,7 @@ private struct TextInteractionContext {
 
 private let axEditableAttributeName: CFString = "AXEditable" as CFString
 
-// * -- Чтение и замена текста в активном приложении --
+// * -- Читання і заміна тексту в активному застосунку --
 final class TextIOController {
     private let pasteboard = NSPasteboard.general
     private let commandTimeout: TimeInterval = 0.5
@@ -102,14 +102,14 @@ final class TextIOController {
         "таблиці google",
     ]
 
-    // * -- Чтение текста для преобразования --
+    // * -- Читання тексту для перетворення --
     func readTarget() -> TextTarget? {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
         let context = resolveInteractionContext(hasAccessibility: hasAccessibility)
         let focusedElement = context.focusedElement
         let shouldReadSelection = shouldReadSelectionText(from: focusedElement, context: context)
 
-        // 1. Для стандартных приложений сначала пробуем текущее выделение через Accessibility.
+        // 1. Для стандартних застосунків спочатку пробуємо поточне виділення через Accessibility.
         if shouldReadSelection,
             !context.preferPasteboardSelectionRead,
             let focused = focusedElement,
@@ -123,7 +123,7 @@ final class TextIOController {
             )
         }
 
-        // 2. Читаем выделение через буфер обмена с адаптивным таймаутом.
+        // 2. Читаємо виділення через буфер обміну з адаптивним таймаутом.
         if shouldReadSelection,
             let copiedSelection = copySelectedTextThroughPasteboard(
                 timeout: context.selectionCopyTimeout),
@@ -133,9 +133,9 @@ final class TextIOController {
                 readSelectedTextWithAccessibility(focused: $0)
             }
 
-            // Для редакторов с нестандартным Cmd+C (например, VS Code копирует строку
-            // при отсутствии выделения) — доверяем pasteboard только если AX подтвердил
-            // наличие выделения, или если профиль не требует дополнительной верификации.
+            // Для редакторів із нестандартним Cmd+C (наприклад, VS Code копіює рядок
+            // за відсутності виділення) довіряємо pasteboard тільки якщо AX підтвердив
+            // наявність виділення або якщо профіль не потребує додаткової верифікації.
             if !context.preferPasteboardSelectionRead || accessibilitySelection != nil {
                 return TextTarget(
                     text: copiedSelection,
@@ -146,7 +146,7 @@ final class TextIOController {
             }
         }
 
-        // 3. Для VS Code и web-редакторов после pasteboard дополнительно проверяем AX выделение.
+        // 3. Для VS Code і web-редакторів після pasteboard додатково перевіряємо AX-виділення.
         if shouldReadSelection,
             context.preferPasteboardSelectionRead,
             let focused = focusedElement,
@@ -160,7 +160,7 @@ final class TextIOController {
             )
         }
 
-        // 4. Если выделения нет и доступно Accessibility, берем слово перед курсором через Accessibility.
+        // 4. Якщо виділення немає і доступний Accessibility, беремо слово перед курсором через Accessibility.
         if let focused = focusedElement,
             let selection = readPreviousWordWithAccessibility(focused: focused)
         {
@@ -172,7 +172,7 @@ final class TextIOController {
             )
         }
 
-        // 5. Если Accessibility не доступно (или не вернуло слово перед курсором), используем клавиатурный fallback.
+        // 5. Якщо Accessibility недоступний або не повернув слово перед курсором, використовуємо клавіатурний fallback.
         if context.profile != .terminal,
             let fallbackResult = selectAndCopyPreviousWordThroughKeyboard(
                 focusedElement: focusedElement,
@@ -191,15 +191,15 @@ final class TextIOController {
         return nil
     }
 
-    // * -- Замена текущего выделения --
+    // * -- Заміна поточного виділення --
     func replace(_ target: TextTarget, with replacement: String) -> Bool {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
         let context = resolveInteractionContext(hasAccessibility: hasAccessibility)
         let verificationSelection = target.accessibilitySelection
 
-        // Когда текст получен через AX (слово перед курсором без визуального выделения),
-        // сначала пробуем .accessibility (который вызовет setSelectedTextRange),
-        // затем .pasteboard. Даже если AX-запись не удастся, слово будет выделено для pasteboard.
+        // Коли текст отримано через AX (слово перед курсором без візуального виділення),
+        // спочатку пробуємо .accessibility, який викличе setSelectedTextRange,
+        // потім .pasteboard. Навіть якщо AX-запис не вдасться, слово буде виділено для pasteboard.
         var effectiveOrder = context.replacementOrder
         if target.source == .previousWord, target.accessibilitySelection != nil {
             effectiveOrder = [.accessibility, .pasteboard]
@@ -259,7 +259,7 @@ final class TextIOController {
         return true
     }
 
-    // Прямая замена через AX стабильнее для команд из меню: фокус мог временно уйти в меню.
+    // Пряма заміна через AX стабільніша для команд із меню: фокус міг тимчасово піти в меню.
     private func replaceWithAccessibility(
         _ selection: AccessibilitySelection, replacement: String, trailingSpacesCount: Int
     ) -> AccessibilityReplaceOutcome {
@@ -326,7 +326,7 @@ final class TextIOController {
         return currentValue == expectedValue ? .verified : .failed
     }
 
-    // Fallback для редакторов, которые не позволяют менять значение через Accessibility.
+    // Fallback для редакторів, які не дозволяють змінювати значення через Accessibility.
     private func replaceCurrentSelectionThroughPasteboard(
         with replacement: String,
         settleTimeout: TimeInterval,
@@ -374,7 +374,7 @@ final class TextIOController {
         return true
     }
 
-    // Читаем выделенный текст из focused AX element.
+    // Читаємо виділений текст із focused AX element.
     private func readSelectedTextWithAccessibility(focused: AXUIElement) -> AccessibilitySelection?
     {
         guard let selected = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused),
@@ -392,7 +392,7 @@ final class TextIOController {
         )
     }
 
-    // Читаем слово перед курсором через Accessibility, если выделения нет.
+    // Читаємо слово перед курсором через Accessibility, якщо виділення немає.
     private func readPreviousWordWithAccessibility(focused: AXUIElement) -> AccessibilitySelection?
     {
         guard let range = selectedTextRange(from: focused),
@@ -409,7 +409,7 @@ final class TextIOController {
 
         let leftStringCut = (leftString as NSString).substring(to: range.location)
 
-        // Пропускаем хвостовые пробелы
+        // Пропускаємо хвостові пробіли.
         var endIndex = leftStringCut.endIndex
         while endIndex > leftStringCut.startIndex {
             let prevIndex = leftStringCut.index(before: endIndex)
@@ -450,7 +450,7 @@ final class TextIOController {
         )
     }
 
-    // Клавиатурный fallback для выделения слова до курсора (через выделение до начала строки).
+    // Клавіатурний fallback для виділення слова до курсора через виділення до початку рядка.
     private func selectAndCopyPreviousWordThroughKeyboard(
         focusedElement: AXUIElement?,
         preferWordNavigation: Bool,
@@ -477,7 +477,7 @@ final class TextIOController {
         return selectAndCopyPreviousWordByLineSelection(copyTimeout: copyTimeout)
     }
 
-    // Пробуем выбрать предыдущее слово напрямую: Option+Shift+Left.
+    // Пробуємо вибрати попереднє слово напряму: Option+Shift+Left.
     private func selectAndCopyPreviousWordWithWordNavigation(copyTimeout: TimeInterval) -> (
         word: String, trailingSpacesCount: Int
     )? {
@@ -502,33 +502,33 @@ final class TextIOController {
         return (word: word, trailingSpacesCount: 0)
     }
 
-    // Стратегия по умолчанию: выделяем до начала строки и вычисляем последнее слово.
+    // Стратегія за замовчуванням: виділяємо до початку рядка і обчислюємо останнє слово.
     private func selectAndCopyPreviousWordByLineSelection(copyTimeout: TimeInterval) -> (
         word: String, trailingSpacesCount: Int
     )? {
-        // 1. Выделяем текст от курсора до начала строки: Cmd+Shift+Left
+        // 1. Виділяємо текст від курсора до початку рядка: Cmd+Shift+Left.
         guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: [.maskCommand, .maskShift])
         else {
             return nil
         }
         waitForKeyboardSideEffects(timeout: pollStep)
 
-        // 2. Копируем выделенный текст
+        // 2. Копіюємо виділений текст.
         guard let lineText = copySelectedTextThroughPasteboard(timeout: copyTimeout) else {
             _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
             return nil
         }
 
-        // 3. Снимаем выделение, возвращая курсор в исходное положение (стрелка вправо)
+        // 3. Знімаємо виділення, повертаючи курсор у початкове положення: стрілка вправо.
         guard sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: []) else {
             return nil
         }
         waitForKeyboardSideEffects(timeout: pollStep)
 
-        // 4. Находим последнее слово (разделители — только пробелы и новые строки)
+        // 4. Знаходимо останнє слово: розділювачі тільки пробіли й нові рядки.
         let trimmedLine = lineText.trimmingCharacters(in: .newlines)
 
-        // Пропускаем хвостовые пробелы
+        // Пропускаємо хвостові пробіли.
         var endIndex = trimmedLine.endIndex
         while endIndex > trimmedLine.startIndex {
             let prevIndex = trimmedLine.index(before: endIndex)
@@ -556,7 +556,7 @@ final class TextIOController {
 
         let trailingSpacesCount = trimmedLine.distance(from: endIndex, to: trimmedLine.endIndex)
 
-        // 5. Двигаем курсор влево мимо хвостовых пробелов (без Shift)
+        // 5. Рухаємо курсор ліворуч повз хвостові пробіли без Shift.
         for _ in 0..<trailingSpacesCount {
             guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: []) else {
                 return nil
@@ -566,7 +566,7 @@ final class TextIOController {
             waitForKeyboardSideEffects(timeout: pollStep)
         }
 
-        // 6. Выделяем слово перед курсором: Shift+LeftArrow N раз
+        // 6. Виділяємо слово перед курсором: Shift+LeftArrow N разів.
         for _ in 0..<wordLength {
             guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: .maskShift) else {
                 return nil
@@ -823,7 +823,7 @@ final class TextIOController {
         ) == .success
     }
 
-    // Копируем выделение, сохраняя исходный pasteboard.
+    // Копіюємо виділення, зберігаючи початковий pasteboard.
     private func copySelectedTextThroughPasteboard(timeout: TimeInterval = 0.5) -> String? {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
@@ -839,7 +839,7 @@ final class TextIOController {
         return copied
     }
 
-    // Отправляем системный key down/up.
+    // Надсилаємо системний key down/up.
     private func sendKeyboardShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState),
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
@@ -856,12 +856,12 @@ final class TextIOController {
         return true
     }
 
-    // Ждем, пока система обработает синтетическую клавиатурную команду.
+    // Чекаємо, поки система обробить синтетичну клавіатурну команду.
     private func waitForKeyboardSideEffects(timeout: TimeInterval) {
         RunLoop.current.run(until: Date().addingTimeInterval(timeout))
     }
 
-    // Ожидаем обновление pasteboard после Cmd+C.
+    // Очікуємо оновлення pasteboard після Cmd+C.
     private func waitForCopiedString(after changeCount: Int, timeout: TimeInterval) -> String? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -884,11 +884,11 @@ private enum KeyCode {
     static let rightArrow: CGKeyCode = 124
 }
 
-// * -- Снимок pasteboard для восстановления после copy/paste --
+// * -- Знімок pasteboard для відновлення після copy/paste --
 private struct PasteboardSnapshot {
     private let items: [[NSPasteboard.PasteboardType: Data]]
 
-    // Сохраняем все типы данных, а не только plain text.
+    // Зберігаємо всі типи даних, а не тільки plain text.
     static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
         let items =
             pasteboard.pasteboardItems?.map { item -> [NSPasteboard.PasteboardType: Data] in

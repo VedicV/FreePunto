@@ -63,6 +63,20 @@ public enum InterfaceLanguage: String, CaseIterable, Codable, Sendable, Equatabl
     case ukrainian
     case english
 
+    public static var systemDefault: InterfaceLanguage {
+        let preferredLanguage = Locale.preferredLanguages.first?.lowercased() ?? ""
+        if preferredLanguage.hasPrefix("uk") {
+            return .ukrainian
+        }
+        if preferredLanguage.hasPrefix("ru") {
+            return .russian
+        }
+        if preferredLanguage.hasPrefix("en") {
+            return .english
+        }
+        return .ukrainian
+    }
+
     public var title: String {
         switch self {
         case .russian: "Русский"
@@ -176,7 +190,7 @@ public struct PuntoSettings: Codable, Sendable, Equatable {
         fixedTargetLanguage: PuntoLanguage = .russian,
         transliterationTargetLanguage: PuntoLanguage = .russian,
         caseMode: CaseMode = .sentence,
-        interfaceLanguage: InterfaceLanguage = .russian
+        interfaceLanguage: InterfaceLanguage = .systemDefault
     ) {
         self.schemaVersion = schemaVersion
         self.isEnabled = isEnabled

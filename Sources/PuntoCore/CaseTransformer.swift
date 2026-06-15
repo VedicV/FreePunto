@@ -1,8 +1,8 @@
 import Foundation
 
-// * -- Преобразование регистра --
+// * -- Перетворення регістру --
 public enum CaseTransformer {
-    // * -- Выбор режима регистра --
+    // * -- Вибір режиму регістру --
     public static func transform(_ text: String, mode: CaseMode) -> String {
         switch mode {
         case .lower:
@@ -16,7 +16,7 @@ public enum CaseTransformer {
         }
     }
 
-    // Новое предложение начинается после `.`, `!` или `?`, пробелы и пунктуация сохраняются.
+    // Нове речення починається після `.`, `!` або `?`, пробіли й пунктуація зберігаються.
     private static func sentenceCase(_ text: String) -> String {
         var result = ""
         var shouldCapitalize = true
@@ -43,7 +43,7 @@ public enum CaseTransformer {
         return result
     }
 
-    // Апостроф не начинает новое слово, чтобы английские сокращения выглядели естественно.
+    // Апостроф не починає нове слово, щоб англійські скорочення виглядали природно.
     private static func titleCase(_ text: String) -> String {
         var result = ""
         var atWordStart = true

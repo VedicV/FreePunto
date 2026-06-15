@@ -1,4 +1,36 @@
 .DS_Store
+
+# Swift Package Manager
 .build/
 .build-test/
+Package.resolved
+
+# Local release artifacts
 dist/
+
+# Xcode
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# macOS packaging and signing leftovers
+*.dmg
+*.app
+*.pkg
+*.xcarchive
+*.ipa
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment and local editor files
+.env
+.env.*
+.vscode/
+.idea/
