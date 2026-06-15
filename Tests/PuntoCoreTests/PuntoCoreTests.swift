@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PuntoCore
 
 final class PuntoCoreTests: XCTestCase {
@@ -24,14 +25,19 @@ final class PuntoCoreTests: XCTestCase {
     func testLayoutRoundTripsBetweenSupportedLanguages() {
         let englishSample = "Qwerty, asdf; zxcv. []'"
         let russian = LayoutTransformer.transform(englishSample, from: .english, to: .russian)
-        XCTAssertEqual(LayoutTransformer.transform(russian, from: .russian, to: .english), englishSample)
+        XCTAssertEqual(
+            LayoutTransformer.transform(russian, from: .russian, to: .english), englishSample)
 
         let ukrainian = LayoutTransformer.transform(englishSample, from: .english, to: .ukrainian)
-        XCTAssertEqual(LayoutTransformer.transform(ukrainian, from: .ukrainian, to: .english), englishSample)
+        XCTAssertEqual(
+            LayoutTransformer.transform(ukrainian, from: .ukrainian, to: .english), englishSample)
 
         let russianSource = "Привет, ёж!"
-        let ukrainianFromRussian = LayoutTransformer.transform(russianSource, from: .russian, to: .ukrainian)
-        XCTAssertEqual(LayoutTransformer.transform(ukrainianFromRussian, from: .ukrainian, to: .russian), russianSource)
+        let ukrainianFromRussian = LayoutTransformer.transform(
+            russianSource, from: .russian, to: .ukrainian)
+        XCTAssertEqual(
+            LayoutTransformer.transform(ukrainianFromRussian, from: .ukrainian, to: .russian),
+            russianSource)
     }
 
     func testLayoutPreservesLetterCase() {
@@ -86,9 +92,16 @@ final class PuntoCoreTests: XCTestCase {
 
     func testCaseTransformations() {
         XCTAssertEqual(CaseTransformer.transform("ПРИВЕТ, HELLO!", mode: .lower), "привет, hello!")
-        XCTAssertEqual(CaseTransformer.transform("пРИВЕТ. hELLO! як СПРАВИ?", mode: .sentence), "Привет. Hello! Як справи?")
-        XCTAssertEqual(CaseTransformer.transform("ivan's test іванів ТЕСТ", mode: .title), "Ivan's Test Іванів Тест")
-        XCTAssertEqual(CaseTransformer.transform("CAPS ЁЖ ЇЖАК", mode: .normalizeCapsLock), "caps ёж їжак")
+        XCTAssertEqual(
+            CaseTransformer.transform("пРИВЕТ. hELLO! як СПРАВИ?", mode: .sentence),
+            "Привет. Hello! Як справи?")
+        XCTAssertEqual(
+            CaseTransformer.transform("ivan's test іванів ТЕСТ", mode: .title),
+            "Ivan's Test Іванів Тест")
+        XCTAssertEqual(
+            CaseTransformer.transform("CAPS ЁЖ ЇЖАК", mode: .normalizeCapsLock), "caps ёж їжак")
+        XCTAssertEqual(
+            CaseTransformer.transform("пРИВЕТ, hELLO!", mode: .normalizeCapsLock), "Привет, Hello!")
     }
 
     func testTransliterationFromRussianUkrainianAndLatin() {
@@ -97,7 +110,8 @@ final class PuntoCoreTests: XCTestCase {
         XCTAssertEqual(russianToLatin.sourceLanguage, .russian)
         XCTAssertEqual(russianToLatin.targetLanguage, .english)
 
-        let ukrainianToLatin = Transliterator.transliterate("Привіт, їжак і ґава!", targetLanguage: .ukrainian)
+        let ukrainianToLatin = Transliterator.transliterate(
+            "Привіт, їжак і ґава!", targetLanguage: .ukrainian)
         XCTAssertEqual(ukrainianToLatin.replacementText, "Pryvit, yizhak i gava!")
         XCTAssertEqual(ukrainianToLatin.sourceLanguage, .ukrainian)
         XCTAssertEqual(ukrainianToLatin.targetLanguage, .english)
@@ -107,10 +121,23 @@ final class PuntoCoreTests: XCTestCase {
         XCTAssertEqual(latinToRussian.sourceLanguage, .english)
         XCTAssertEqual(latinToRussian.targetLanguage, .russian)
 
-        let latinToUkrainian = Transliterator.transliterate("Hlib i gava", targetLanguage: .ukrainian)
+        let latinToUkrainian = Transliterator.transliterate(
+            "Hlib i gava", targetLanguage: .ukrainian)
         XCTAssertEqual(latinToUkrainian.replacementText, "Гліб і ґава")
         XCTAssertEqual(latinToUkrainian.sourceLanguage, .english)
         XCTAssertEqual(latinToUkrainian.targetLanguage, .ukrainian)
+    }
+
+    func testTransliterationMixedTextUsesLanguageSpecificCyrillicLetters() {
+        let mixedUkrainian = Transliterator.transliterate("abc їж", targetLanguage: .russian)
+        XCTAssertEqual(mixedUkrainian.replacementText, "abc yizh")
+        XCTAssertEqual(mixedUkrainian.sourceLanguage, .ukrainian)
+        XCTAssertEqual(mixedUkrainian.targetLanguage, .english)
+
+        let mixedRussian = Transliterator.transliterate("abc ёж", targetLanguage: .ukrainian)
+        XCTAssertEqual(mixedRussian.replacementText, "abc yozh")
+        XCTAssertEqual(mixedRussian.sourceLanguage, .russian)
+        XCTAssertEqual(mixedRussian.targetLanguage, .english)
     }
 
     func testPunctuationWhitespaceAndUnmappedCharactersArePreserved() {
@@ -119,7 +146,8 @@ final class PuntoCoreTests: XCTestCase {
             "рш  123\t🙂\nхї"
         )
         XCTAssertEqual(
-            Transliterator.transliterate("Privet,\t mir 123 🙂", targetLanguage: .russian).replacementText,
+            Transliterator.transliterate("Privet,\t mir 123 🙂", targetLanguage: .russian)
+                .replacementText,
             "Привет,\t мир 123 🙂"
         )
         XCTAssertEqual(

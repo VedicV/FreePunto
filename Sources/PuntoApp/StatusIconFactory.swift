@@ -59,8 +59,7 @@ enum StatusIconFactory {
         case let .text(text):
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.monospacedSystemFont(ofSize: 6.8, weight: .heavy),
-                .foregroundColor: NSColor.black,
-                .kern: -0.45
+                .foregroundColor: NSColor.black
             ]
             let label = NSAttributedString(string: text, attributes: attributes)
             let textSize = label.size()
@@ -72,6 +71,7 @@ enum StatusIconFactory {
         }
 
         if fixedMode {
+            NSColor.black.setFill()
             NSBezierPath(ovalIn: NSRect(x: 4.0, y: 12.0, width: 2.2, height: 2.2)).fill()
         }
 

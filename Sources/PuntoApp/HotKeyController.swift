@@ -28,6 +28,9 @@ final class HotKeyController {
         let mask =
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.flagsChanged.rawValue) |
+            (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.rightMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue) |
             (1 << CGEventType.tapDisabledByTimeout.rawValue) |
             (1 << CGEventType.tapDisabledByUserInput.rawValue)
 
@@ -90,6 +93,12 @@ final class HotKeyController {
         }
 
         let settings = settingsProvider()
+
+        // Любой клик мыши отменяет кандидата на одиночное нажатие Control
+        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            singleControlCandidate = false
+            return Unmanaged.passUnretained(event)
+        }
 
         // Одиночный Control отслеживается через flagsChanged, а не через keyDown.
         if type == .flagsChanged {

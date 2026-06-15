@@ -7,7 +7,7 @@ public enum Transliterator {
         "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
         "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
         "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch",
-        "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya"
+        "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
     ]
 
     private static let ukrainianToLatin: [String: String] = [
@@ -15,7 +15,7 @@ public enum Transliterator {
         "є": "ye", "ж": "zh", "з": "z", "и": "y", "і": "i", "ї": "yi", "й": "y",
         "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
         "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts",
-        "ч": "ch", "ш": "sh", "щ": "sch", "ь": "", "ю": "yu", "я": "ya"
+        "ч": "ch", "ш": "sh", "щ": "sch", "ь": "", "ю": "yu", "я": "ya",
     ]
 
     private static let latinToRussian: [(String, String)] = [
@@ -25,7 +25,7 @@ public enum Transliterator {
         ("d", "д"), ("e", "е"), ("z", "з"), ("i", "и"), ("j", "й"),
         ("y", "й"), ("k", "к"), ("l", "л"), ("m", "м"), ("n", "н"),
         ("o", "о"), ("p", "п"), ("r", "р"), ("s", "с"), ("t", "т"),
-        ("u", "у"), ("f", "ф"), ("h", "х"), ("c", "к")
+        ("u", "у"), ("f", "ф"), ("h", "х"), ("c", "к"),
     ]
 
     private static let latinToUkrainian: [(String, String)] = [
@@ -35,13 +35,15 @@ public enum Transliterator {
         ("g", "ґ"), ("d", "д"), ("e", "е"), ("z", "з"), ("i", "і"),
         ("j", "й"), ("y", "й"), ("k", "к"), ("l", "л"), ("m", "м"),
         ("n", "н"), ("o", "о"), ("p", "п"), ("r", "р"), ("s", "с"),
-        ("t", "т"), ("u", "у"), ("f", "ф"), ("c", "к")
+        ("t", "т"), ("u", "у"), ("f", "ф"), ("c", "к"),
     ]
 
     // * -- Выбор направления транслитерации --
-    public static func transliterate(_ text: String, targetLanguage: PuntoLanguage) -> TransformationResult {
+    public static func transliterate(_ text: String, targetLanguage: PuntoLanguage)
+        -> TransformationResult
+    {
         if LanguageDetector.containsCyrillic(text) {
-            let source = LanguageDetector.detect(text, fallback: targetLanguage)
+            let source = detectCyrillicSourceLanguage(text, fallback: targetLanguage)
             let replacement = cyrillicToLatin(text, sourceLanguage: source)
             return TransformationResult(
                 command: .transliteration,
@@ -105,6 +107,28 @@ public enum Transliterator {
         }
 
         return result
+    }
+
+    // Для смешанного текста даем приоритет буквам, характерным для конкретного языка.
+    private static func detectCyrillicSourceLanguage(_ text: String, fallback: PuntoLanguage)
+        -> PuntoLanguage
+    {
+        if containsAny(text, from: "іїєґІЇЄҐ") {
+            return .ukrainian
+        }
+
+        if containsAny(text, from: "ёъыэЁЪЫЭ") {
+            return .russian
+        }
+
+        let normalizedFallback: PuntoLanguage = fallback == .ukrainian ? .ukrainian : .russian
+        let detected = LanguageDetector.detect(text, fallback: normalizedFallback)
+        return detected == .english ? normalizedFallback : detected
+    }
+
+    private static func containsAny(_ text: String, from characters: String) -> Bool {
+        let charset = Set(characters.unicodeScalars)
+        return text.unicodeScalars.contains(where: { charset.contains($0) })
     }
 
     // Регистр переносится с исходного фрагмента на замену, включая многобуквенные сочетания.

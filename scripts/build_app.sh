@@ -60,4 +60,5 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+codesign --force --sign - "$APP_DIR"
 echo "Built $APP_DIR"

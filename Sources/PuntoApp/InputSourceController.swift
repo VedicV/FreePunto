@@ -22,7 +22,8 @@ final class InputSourceController {
     // Ищем selectable keyboard input source по языковому коду.
     private func findInputSource(for language: PuntoLanguage) -> TISInputSource? {
         guard let categoryKey = kTISPropertyInputSourceCategory,
-              let keyboardCategory = kTISCategoryKeyboardInputSource else {
+            let keyboardCategory = kTISCategoryKeyboardInputSource
+        else {
             return nil
         }
 
@@ -37,9 +38,15 @@ final class InputSourceController {
 
         let list = unmanagedList.takeRetainedValue() as NSArray
         for item in list {
-            let source = item as! TISInputSource
+            let cfItem = item as CFTypeRef
+            guard CFGetTypeID(cfItem) == TISInputSourceGetTypeID() else {
+                continue
+            }
+
+            let source = unsafeBitCast(cfItem, to: TISInputSource.self)
             guard sourceIsSelectable(source),
-                  sourceMatches(source, language: language) else {
+                sourceMatches(source, language: language)
+            else {
                 continue
             }
             return source
@@ -50,7 +57,8 @@ final class InputSourceController {
 
     // Отбрасываем источники, которые нельзя выбрать.
     private func sourceIsSelectable(_ source: TISInputSource) -> Bool {
-        guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable) else {
+        guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable)
+        else {
             return false
         }
         return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue())
@@ -67,7 +75,9 @@ final class InputSourceController {
             guard let code = entry as? String else {
                 continue
             }
-            if code == language.inputSourceLanguageCode || code.hasPrefix(language.inputSourceLanguageCode + "-") {
+            if code == language.inputSourceLanguageCode
+                || code.hasPrefix(language.inputSourceLanguageCode + "-")
+            {
                 return true
             }
         }

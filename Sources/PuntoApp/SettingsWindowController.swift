@@ -2,7 +2,7 @@ import AppKit
 import PuntoCore
 
 // * -- Окно настроек --
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let state: AppState
     private var recordingMonitor: Any?
     private var sleeves: [ClosureSleeve] = []
@@ -19,6 +19,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = AppText.get(.settingsTitle, state.settings.interfaceLanguage)
         window.center()
         super.init(window: window)
+        window.delegate = self
         buildContent()
     }
 
@@ -282,6 +283,12 @@ final class SettingsWindowController: NSWindowController {
             NSEvent.removeMonitor(recordingMonitor)
         }
         recordingMonitor = nil
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        stopRecording()
     }
 
     // Удерживаем target-объекты AppKit, чтобы closure не освобождались.

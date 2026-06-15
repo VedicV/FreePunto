@@ -12,7 +12,7 @@ public enum CaseTransformer {
         case .title:
             return titleCase(text)
         case .normalizeCapsLock:
-            return text.lowercased()
+            return swapCase(text)
         }
     }
 
@@ -72,5 +72,16 @@ public enum CaseTransformer {
 
     private static func isApostrophe(_ character: Character) -> Bool {
         character == "'" || character == "’"
+    }
+
+    private static func swapCase(_ text: String) -> String {
+        return text.map { character in
+            let value = String(character)
+            if value == value.uppercased() {
+                return value.lowercased()
+            } else {
+                return value.uppercased()
+            }
+        }.joined()
     }
 }

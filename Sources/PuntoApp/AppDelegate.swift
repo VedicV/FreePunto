@@ -27,9 +27,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         )
 
-        hotKeys?.start()
         rebuildMenu()
-        _ = Diagnostics.accessibilityTrusted(prompt: false)
+
+        if Diagnostics.accessibilityTrusted(prompt: false) {
+            hotKeys?.start()
+        } else {
+            _ = Diagnostics.accessibilityTrusted(prompt: true)
+            Diagnostics.showPermissionsWindow(language: state.settings.interfaceLanguage)
+        }
     }
 
     // * -- Остановка глобальных обработчиков --
@@ -39,7 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // * -- Применение измененных настроек --
     private func refreshAfterSettingsChange() {
-        hotKeys?.start()
+        if Diagnostics.accessibilityTrusted(prompt: false) {
+            hotKeys?.start()
+        }
         rebuildMenu()
     }
 
@@ -208,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Заменяем текущий выбор через системный ввод.
-        guard textIO.replaceCurrentSelection(with: result.replacementText) else {
+        guard textIO.replace(target, with: result.replacementText) else {
             Diagnostics.showError(t(.couldNotReplaceText), language: state.settings.interfaceLanguage)
             return
         }
