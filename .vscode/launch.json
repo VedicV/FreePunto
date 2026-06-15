@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Debug FreePunto",
+            "target": "FreePunto",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug FreePunto"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Release FreePunto",
+            "target": "FreePunto",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release FreePunto"
+        }
+    ]
+}
