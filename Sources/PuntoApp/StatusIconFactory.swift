@@ -35,15 +35,15 @@ enum StatusIconFactory {
 
     private static func keyIcon(topRight: TopRight, fixedMode: Bool) -> NSImage {
 
-        // РАЗМЕР ХОЛСТА ИКОНКИ: Ширина 22 (меньше ширина - меньше отступы до соседей), высота 18
-        let size = NSSize(width: 22, height: 18)
+        // РАЗМЕР ХОЛСТА ИКОНКИ: Ширина 23 (меньше ширина - меньше отступы до соседей), высота 18
+        let size = NSSize(width: 23, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
             NSGraphicsContext.current?.imageInterpolation = .high
             NSColor.clear.setFill()
             rect.fill()
 
-            // КОНТУР КЛАВИШИ: x: 1 (отступ слева), y: 1 (отступ снизу), ширина 20, высота 15
-            let key = NSRect(x: 1, y: 1, width: 20, height: 15)
+            // КОНТУР КЛАВИШИ: x: 1 (отступ слева), y: 1 (отступ снизу), ширина 21, высота 15
+            let key = NSRect(x: 1, y: 1, width: 21, height: 15)
             let keyPath = NSBezierPath(roundedRect: key, xRadius: 2.6, yRadius: 2.6)
             NSColor.black.setStroke()
 

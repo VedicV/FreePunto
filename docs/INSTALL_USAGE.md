@@ -57,7 +57,7 @@ FreePunto не открывает обычное окно. После запус
 Итоговый файл:
 
 ```text
-dist/FreePunto-0.1.0.dmg
+dist/FreePunto-0.1.1.dmg
 ```
 
 Внутри DMG лежит `FreePunto.app` и ярлык `Applications`. Откройте DMG и перетащите `FreePunto.app` на `Applications`.

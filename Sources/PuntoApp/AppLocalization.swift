@@ -98,7 +98,7 @@ enum AppText {
         .permissions: "Разрешения...",
         .quit: "Выйти из FreePunto",
         .enabled: "Включено",
-        .mainHotkey: "Смена раскладки клавиатуры",
+        .mainHotkey: "Смена раскладки",
         .restoreControl: "Вернуть Control",
         .useSingleControl: "Использовать Control для смены раскладки",
         .caseHotkey: "Клавиша регистра",
@@ -109,20 +109,23 @@ enum AppText {
         .pressKeys: "Нажмите клавиши...",
         .settingsTitle: "Настройки FreePunto",
         .globalHotkeysUnavailable: "Горячие клавиши недоступны",
-        .globalHotkeysUnavailableDetail: "Разрешите Accessibility и Input Monitoring для FreePunto, затем перезапустите приложение. Если разрешения уже включены, удалите приложение из списка (кнопкой «-») и добавьте заново.",
+        .globalHotkeysUnavailableDetail:
+            "Разрешите Accessibility и Input Monitoring для FreePunto, затем перезапустите приложение. Если разрешения уже включены, удалите приложение из списка (кнопкой «-») и добавьте заново.",
         .couldNotReplaceText: "Не удалось заменить текст",
         .inputSourceUnavailable: "Раскладка недоступна",
         .addInputSourceDetail: "Добавьте раскладку %@ в настройках клавиатуры macOS.",
         .launchAtLoginUnavailable: "Не удалось включить запуск при входе",
         .permissionsTitle: "Разрешения FreePunto",
-        .permissionsEnabledDetail: "Accessibility включен. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
-        .permissionsMissingDetail: "Включите Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
+        .permissionsEnabledDetail:
+            "Accessibility включен. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
+        .permissionsMissingDetail:
+            "Включите Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
         .lowercase: "Нижний регистр",
         .sentenceCase: "Регистр предложения",
         .titleCase: "Первые буквы слов",
         .normalizeCapsLock: "Исправить Caps Lock",
         .sequentialMode: "По кругу",
-        .fixedTargetMode: "Фиксированная цель"
+        .fixedTargetMode: "Фиксированная цель",
     ]
 
     private static let ukrainian: [Key: String] = [
@@ -142,7 +145,7 @@ enum AppText {
         .permissions: "Дозволи...",
         .quit: "Вийти з FreePunto",
         .enabled: "Увімкнено",
-        .mainHotkey: "Зміна розкладки клавіатури",
+        .mainHotkey: "Зміна розкладки",
         .restoreControl: "Повернути Control",
         .useSingleControl: "Використовувати Control для зміни розкладки",
         .caseHotkey: "Клавіша регістру",
@@ -153,20 +156,23 @@ enum AppText {
         .pressKeys: "Натисніть клавіші...",
         .settingsTitle: "Налаштування FreePunto",
         .globalHotkeysUnavailable: "Гарячі клавіші недоступні",
-        .globalHotkeysUnavailableDetail: "Дозвольте Accessibility та Input Monitoring для FreePunto, потім перезапустіть застосунок. Якщо дозволи вже надано, видаліть FreePunto зі списку (кнопкою «-») та додайте знову.",
+        .globalHotkeysUnavailableDetail:
+            "Дозвольте Accessibility та Input Monitoring для FreePunto, потім перезапустіть застосунок. Якщо дозволи вже надано, видаліть FreePunto зі списку (кнопкою «-») та додайте знову.",
         .couldNotReplaceText: "Не вдалося замінити текст",
         .inputSourceUnavailable: "Розкладка недоступна",
         .addInputSourceDetail: "Додайте розкладку %@ у налаштуваннях клавіатури macOS.",
         .launchAtLoginUnavailable: "Не вдалося ввімкнути запуск при вході",
         .permissionsTitle: "Дозволи FreePunto",
-        .permissionsEnabledDetail: "Accessibility увімкнено. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
-        .permissionsMissingDetail: "Увімкніть Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
+        .permissionsEnabledDetail:
+            "Accessibility увімкнено. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
+        .permissionsMissingDetail:
+            "Увімкніть Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
         .lowercase: "Нижній регістр",
         .sentenceCase: "Регістр речення",
         .titleCase: "Перші літери слів",
         .normalizeCapsLock: "Виправити Caps Lock",
         .sequentialMode: "По колу",
-        .fixedTargetMode: "Фіксована ціль"
+        .fixedTargetMode: "Фіксована ціль",
     ]
 
     private static let english: [Key: String] = [
@@ -197,19 +203,22 @@ enum AppText {
         .pressKeys: "Press keys...",
         .settingsTitle: "FreePunto Settings",
         .globalHotkeysUnavailable: "Global hotkeys are unavailable",
-        .globalHotkeysUnavailableDetail: "Enable Accessibility and Input Monitoring for FreePunto, then restart the app. If permissions are already enabled, remove FreePunto from the list (using the '-' button) and add it again.",
+        .globalHotkeysUnavailableDetail:
+            "Enable Accessibility and Input Monitoring for FreePunto, then restart the app. If permissions are already enabled, remove FreePunto from the list (using the '-' button) and add it again.",
         .couldNotReplaceText: "Could not replace text",
         .inputSourceUnavailable: "Input source is not available",
         .addInputSourceDetail: "Add %@ keyboard layout in macOS System Settings.",
         .launchAtLoginUnavailable: "Launch at login is unavailable",
         .permissionsTitle: "FreePunto permissions",
-        .permissionsEnabledDetail: "Accessibility permission is enabled. Input Monitoring may still be required for global hotkeys and single Control.",
-        .permissionsMissingDetail: "Enable Accessibility for FreePunto in System Settings -> Privacy & Security -> Accessibility. Input Monitoring may also be required for global hotkeys and single Control.",
+        .permissionsEnabledDetail:
+            "Accessibility permission is enabled. Input Monitoring may still be required for global hotkeys and single Control.",
+        .permissionsMissingDetail:
+            "Enable Accessibility for FreePunto in System Settings -> Privacy & Security -> Accessibility. Input Monitoring may also be required for global hotkeys and single Control.",
         .lowercase: "Lowercase",
         .sentenceCase: "Sentence case",
         .titleCase: "Title Case",
         .normalizeCapsLock: "Normalize Caps Lock",
         .sequentialMode: "Sequential",
-        .fixedTargetMode: "Fixed target"
+        .fixedTargetMode: "Fixed target",
     ]
 }
