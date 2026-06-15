@@ -11,7 +11,7 @@ APP_DIR="$DIST_DIR/${APP_NAME}.app"
 DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 
-"$ROOT_DIR/scripts/build_app.sh"
+APP_NAME="$APP_NAME" VERSION="$VERSION" "$ROOT_DIR/scripts/build_app.sh"
 
 rm -rf "$DMG_ROOT" "$DMG_PATH"
 mkdir -p "$DMG_ROOT"

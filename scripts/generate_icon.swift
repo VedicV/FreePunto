@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-let outputPath = CommandLine.arguments.dropFirst().first ?? "Resources/AppIcon.iconset"
+let outputPath = CommandLine.arguments.dropFirst().first ?? ".build/AppIcon.iconset"
 let outputURL = URL(fileURLWithPath: outputPath)
 try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 

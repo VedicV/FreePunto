@@ -14,11 +14,6 @@ final class InputSourceController {
         return TISSelectInputSource(source) == noErr
     }
 
-    // * -- Проверка доступности раскладки --
-    func hasInputSource(for language: PuntoLanguage) -> Bool {
-        findInputSource(for: language) != nil
-    }
-
     // Ищем selectable keyboard input source по языковому коду.
     private func findInputSource(for language: PuntoLanguage) -> TISInputSource? {
         guard let categoryKey = kTISPropertyInputSourceCategory,
