@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import PuntoCore
 
 // * -- Текстова ціль команди --
 struct TextTarget {
@@ -426,7 +427,18 @@ final class TextIOController {
     }
 
     // Google Sheets у canvas/grid режимі не має нормального текстового selection.
+    // Спочатку читаємо саме значення комірки з Accessibility, бо Cmd+C тут може
+    // повернути цілий діапазон/рядок замість однієї активної комірки.
     private func readGoogleSheetsCellTarget(context: TextInteractionContext) -> TextTarget? {
+        if let cellText = readGoogleSheetsCellText(from: context.focusedElement), !cellText.isEmpty {
+            return TextTarget(
+                text: cellText,
+                source: .googleSheetsCell,
+                trailingSpacesCount: 0,
+                accessibilitySelection: nil
+            )
+        }
+
         guard let copiedCellText = copySelectedTextThroughPasteboard(
             timeout: context.selectionCopyTimeout),
             !copiedCellText.isEmpty
@@ -439,6 +451,22 @@ final class TextIOController {
             source: .googleSheetsCell,
             trailingSpacesCount: 0,
             accessibilitySelection: nil
+        )
+    }
+
+    private func readGoogleSheetsCellText(from focusedElement: AXUIElement?) -> String? {
+        guard let focusedElement else {
+            return nil
+        }
+
+        let role = stringAttribute(kAXRoleAttribute as CFString, from: focusedElement)
+        let selectedText = stringAttribute(kAXSelectedTextAttribute as CFString, from: focusedElement)
+        let valueText = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
+
+        return AccessibilityTextSelection.preferredText(
+            selectedText: selectedText,
+            valueText: valueText,
+            role: role
         )
     }
 
