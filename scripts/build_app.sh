@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="${APP_NAME:-FreePunto}"
 CONFIGURATION="${CONFIGURATION:-release}"
-VERSION="${VERSION:-0.1.1}"
+VERSION="${VERSION:-0.1.4}"
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 APP_DIR="$ROOT_DIR/dist/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -63,5 +64,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP_DIR"
+codesign --force --sign "$CODESIGN_IDENTITY" "$APP_DIR"
 echo "Built $APP_DIR"
+echo "Signed with identity: $CODESIGN_IDENTITY"

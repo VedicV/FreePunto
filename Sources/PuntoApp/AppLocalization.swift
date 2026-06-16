@@ -19,6 +19,7 @@ enum AppText {
         case disableLaunchAtLogin
         case permissions
         case quit
+        case version
         case enabled
         case mainHotkey
         case restoreControl
@@ -97,6 +98,7 @@ enum AppText {
         .disableLaunchAtLogin: "Не запускать при входе",
         .permissions: "Разрешения...",
         .quit: "Выйти из FreePunto",
+        .version: "Версия",
         .enabled: "Включено",
         .mainHotkey: "Смена раскладки",
         .restoreControl: "Вернуть Control",
@@ -110,7 +112,7 @@ enum AppText {
         .settingsTitle: "Настройки FreePunto",
         .globalHotkeysUnavailable: "Горячие клавиши недоступны",
         .globalHotkeysUnavailableDetail:
-            "Разрешите Accessibility и Input Monitoring для FreePunto, затем перезапустите приложение. Если разрешения уже включены, удалите приложение из списка (кнопкой «-») и добавьте заново.",
+            "Разрешите Accessibility и Input Monitoring для FreePunto, затем перезапустите приложение. Если разрешения уже включены, удалите FreePunto из списка (кнопкой «-»), добавьте заново, полностью выйдите из приложения и запустите его еще раз.",
         .couldNotReplaceText: "Не удалось заменить текст",
         .inputSourceUnavailable: "Раскладка недоступна",
         .addInputSourceDetail: "Добавьте раскладку %@ в настройках клавиатуры macOS.",
@@ -144,6 +146,7 @@ enum AppText {
         .disableLaunchAtLogin: "Не запускати при вході",
         .permissions: "Дозволи...",
         .quit: "Вийти з FreePunto",
+        .version: "Версія",
         .enabled: "Увімкнено",
         .mainHotkey: "Зміна розкладки",
         .restoreControl: "Повернути Control",
@@ -157,7 +160,7 @@ enum AppText {
         .settingsTitle: "Налаштування FreePunto",
         .globalHotkeysUnavailable: "Гарячі клавіші недоступні",
         .globalHotkeysUnavailableDetail:
-            "Дозвольте Accessibility та Input Monitoring для FreePunto, потім перезапустіть застосунок. Якщо дозволи вже надано, видаліть FreePunto зі списку (кнопкою «-») та додайте знову.",
+            "Дозвольте Accessibility та Input Monitoring для FreePunto, потім перезапустіть застосунок. Якщо дозволи вже надано, видаліть FreePunto зі списку (кнопкою «-»), додайте знову, повністю вийдіть із застосунку та запустіть його ще раз.",
         .couldNotReplaceText: "Не вдалося замінити текст",
         .inputSourceUnavailable: "Розкладка недоступна",
         .addInputSourceDetail: "Додайте розкладку %@ у налаштуваннях клавіатури macOS.",
@@ -191,6 +194,7 @@ enum AppText {
         .disableLaunchAtLogin: "Disable launch at login",
         .permissions: "Permissions...",
         .quit: "Quit FreePunto",
+        .version: "Version",
         .enabled: "Enabled",
         .mainHotkey: "Keyboard layout switch",
         .restoreControl: "Restore Control",
@@ -204,7 +208,7 @@ enum AppText {
         .settingsTitle: "FreePunto Settings",
         .globalHotkeysUnavailable: "Global hotkeys are unavailable",
         .globalHotkeysUnavailableDetail:
-            "Enable Accessibility and Input Monitoring for FreePunto, then restart the app. If permissions are already enabled, remove FreePunto from the list (using the '-' button) and add it again.",
+            "Enable Accessibility and Input Monitoring for FreePunto, then restart the app. If permissions are already enabled, remove FreePunto from the list (using the '-' button), add it again, fully quit the app, and launch it one more time.",
         .couldNotReplaceText: "Could not replace text",
         .inputSourceUnavailable: "Input source is not available",
         .addInputSourceDetail: "Add %@ keyboard layout in macOS System Settings.",

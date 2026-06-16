@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(makeItem(title: launchTitle, action: #selector(toggleLaunchAtLogin)))
         menu.addItem(makeItem(title: t(.permissions), action: #selector(openPermissions)))
         menu.addItem(.separator())
+        menu.addItem(versionAndBuildMenuItem())
         menu.addItem(makeItem(title: t(.quit), action: #selector(quit)))
 
         statusItem.menu = menu
@@ -195,6 +196,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    private func versionAndBuildMenuItem() -> NSMenuItem {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let buildTimeStr: String
+        if let path = Bundle.main.executablePath,
+           let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+           let modificationDate = attributes[.modificationDate] as? Date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            buildTimeStr = formatter.string(from: modificationDate)
+        } else {
+            buildTimeStr = "--:--"
+        }
+        let item = NSMenuItem(title: "\(t(.version)) \(version) (\(buildTimeStr))", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
     // * -- Загальний сценарій текстової команди --
     private func performTextCommand(_ command: (String) -> TransformationResult) {
         guard state.settings.isEnabled else {
@@ -214,13 +232,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Замінюємо поточний вибір через системне введення.
-        guard textIO.replace(target, with: result.replacementText) else {
-            Diagnostics.showError(t(.couldNotReplaceText), language: state.settings.interfaceLanguage)
-            return
+        // Замінюємо поточний вибір через системне введення, якщо текст змінився.
+        if result.originalText != result.replacementText {
+            guard textIO.replace(target, with: result.replacementText) else {
+                Diagnostics.showError(t(.couldNotReplaceText), language: state.settings.interfaceLanguage)
+                return
+            }
         }
 
-        // Синхронізуємо macOS input source з мовою результату.
+        // Синхронізуємо macOS input source з мовою результату після заміни,
+        // щоб перемикання розкладки не скидало активне виділення у браузерах.
         if let targetLanguage = result.targetLanguage,
            !inputSources.selectInputSource(for: targetLanguage) {
             Diagnostics.showError(

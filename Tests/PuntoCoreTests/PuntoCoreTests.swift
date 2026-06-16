@@ -172,4 +172,46 @@ final class PuntoCoreTests: XCTestCase {
             "  Hello,\tмир!  "
         )
     }
+
+    func testTransformationResultDidChangeIncludesLanguageChange() {
+        let resultSameTextSameLang = TransformationResult(
+            command: .layout,
+            originalText: "привет",
+            replacementText: "привет",
+            sourceLanguage: .russian,
+            targetLanguage: .russian
+        )
+        XCTAssertFalse(resultSameTextSameLang.didChange)
+
+        let resultSameTextDiffLang = TransformationResult(
+            command: .layout,
+            originalText: "привет",
+            replacementText: "привет",
+            sourceLanguage: .russian,
+            targetLanguage: .ukrainian
+        )
+        XCTAssertTrue(resultSameTextDiffLang.didChange)
+    }
+
+    func testSequentialModeFiltersCyclesByEnabledLanguages() {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let enabled = [PuntoLanguage.english, PuntoLanguage.ukrainian]
+
+        // Англійська -> українська напряму, без російської.
+        let step1 = engine.convertLayout("ghbdtn", settings: settings, enabledLanguages: enabled)
+        XCTAssertEqual(step1.replacementText, "привет")
+        XCTAssertEqual(step1.sourceLanguage, .english)
+        XCTAssertEqual(step1.targetLanguage, .ukrainian)
+
+        XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings, enabledLanguages: enabled), .english)
+
+        // Українська -> англійська.
+        let step2 = engine.convertLayout("привет", settings: settings, enabledLanguages: enabled)
+        XCTAssertEqual(step2.replacementText, "ghbdtn")
+        XCTAssertEqual(step2.sourceLanguage, .ukrainian)
+        XCTAssertEqual(step2.targetLanguage, .english)
+
+        XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings, enabledLanguages: enabled), .ukrainian)
+    }
 }

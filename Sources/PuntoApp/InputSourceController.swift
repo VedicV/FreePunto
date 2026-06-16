@@ -4,6 +4,11 @@ import PuntoCore
 
 // * -- Перемикання системної розкладки macOS --
 final class InputSourceController {
+    private struct InputSourceCandidate {
+        let source: TISInputSource
+        let score: Int
+    }
+
     // * -- Вибір розкладки для мови результату --
     @discardableResult
     func selectInputSource(for language: PuntoLanguage) -> Bool {
@@ -12,6 +17,48 @@ final class InputSourceController {
         }
 
         return TISSelectInputSource(source) == noErr
+    }
+
+    // * -- Отримання списку активних мов --
+    func activeLanguages() -> [PuntoLanguage] {
+        guard let categoryKey = kTISPropertyInputSourceCategory,
+            let keyboardCategory = kTISCategoryKeyboardInputSource
+        else {
+            return PuntoLanguage.allCases
+        }
+
+        let conditions = NSDictionary(
+            object: keyboardCategory as String as NSString,
+            forKey: categoryKey as String as NSString
+        )
+
+        guard let unmanagedList = TISCreateInputSourceList(conditions, false) else {
+            return PuntoLanguage.allCases
+        }
+
+        let list = unmanagedList.takeRetainedValue() as NSArray
+        var active: Set<PuntoLanguage> = []
+
+        for item in list {
+            let cfItem = item as CFTypeRef
+            guard CFGetTypeID(cfItem) == TISInputSourceGetTypeID() else {
+                continue
+            }
+
+            let source = unsafeBitCast(cfItem, to: TISInputSource.self)
+            guard sourceIsSelectable(source) else {
+                continue
+            }
+
+            for lang in PuntoLanguage.allCases {
+                if sourceMatchScore(source, language: lang) != nil {
+                    active.insert(lang)
+                }
+            }
+        }
+
+        let result = PuntoLanguage.allCases.filter { active.contains($0) }
+        return result.isEmpty ? PuntoLanguage.allCases : result
     }
 
     // Шукаємо selectable keyboard input source за мовним кодом або назвою розкладки.
@@ -32,6 +79,7 @@ final class InputSourceController {
         }
 
         let list = unmanagedList.takeRetainedValue() as NSArray
+        var candidates: [InputSourceCandidate] = []
         for item in list {
             let cfItem = item as CFTypeRef
             guard CFGetTypeID(cfItem) == TISInputSourceGetTypeID() else {
@@ -40,14 +88,14 @@ final class InputSourceController {
 
             let source = unsafeBitCast(cfItem, to: TISInputSource.self)
             guard sourceIsSelectable(source),
-                sourceMatches(source, language: language)
+                let score = sourceMatchScore(source, language: language)
             else {
                 continue
             }
-            return source
+            candidates.append(InputSourceCandidate(source: source, score: score))
         }
 
-        return nil
+        return candidates.min { lhs, rhs in lhs.score < rhs.score }?.source
     }
 
     // Відкидаємо джерела, які не можна вибрати.
@@ -59,13 +107,19 @@ final class InputSourceController {
         return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue())
     }
 
-    // Порівнюємо мови input source з кодом PuntoLanguage.
-    private func sourceMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
-        if sourceLanguageMatches(source, language: language) {
-            return true
-        }
+    // Порівнюємо input source з PuntoLanguage і вибираємо найточніший збіг.
+    private func sourceMatchScore(_ source: TISInputSource, language: PuntoLanguage) -> Int? {
+        let nameScore = sourceNameMatchScore(source, language: language)
+        let languageScore = sourceLanguageMatches(source, language: language) ? 20 : nil
 
-        return sourceNameMatches(source, language: language)
+        switch (nameScore, languageScore) {
+        case let (.some(nameScore), .some(languageScore)):
+            return min(nameScore, languageScore)
+        case let (.some(score), .none), let (.none, .some(score)):
+            return score
+        case (.none, .none):
+            return nil
+        }
     }
 
     private func sourceLanguageMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
@@ -87,22 +141,24 @@ final class InputSourceController {
         return false
     }
 
-    private func sourceNameMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
-        let values = [
-            stringProperty(kTISPropertyInputSourceID, from: source),
-            stringProperty(kTISPropertyLocalizedName, from: source),
-        ].compactMap { $0?.lowercased() }
+    private func sourceNameMatchScore(_ source: TISInputSource, language: PuntoLanguage) -> Int? {
+        let identifier = stringProperty(kTISPropertyInputSourceID, from: source)?.lowercased()
+        let localizedName = stringProperty(kTISPropertyLocalizedName, from: source)?.lowercased()
+        let values = [identifier, localizedName].compactMap { $0 }
 
-        return values.contains { value in
-            switch language {
-            case .english:
-                return value.contains("abc") || value.contains("us") || value.contains("english")
-            case .russian:
-                return value.contains("russian") || value.contains("ru-") || value.contains(".ru")
-            case .ukrainian:
-                return value.contains("ukrainian") || value.contains("uk-") || value.contains(".uk")
+        for value in values {
+            if language.preferredInputSourceIDs.contains(value) {
+                return 0
             }
         }
+
+        for value in values {
+            if language.inputSourceNameHints.contains(where: { value.contains($0) }) {
+                return 10
+            }
+        }
+
+        return nil
     }
 
     private func stringProperty(_ property: CFString, from source: TISInputSource) -> String? {
@@ -110,5 +166,39 @@ final class InputSourceController {
             return nil
         }
         return Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue() as? String
+    }
+}
+
+private extension PuntoLanguage {
+    var preferredInputSourceIDs: Set<String> {
+        switch self {
+        case .english:
+            return [
+                "com.apple.keylayout.abc",
+                "com.apple.keylayout.us",
+            ]
+        case .russian:
+            return [
+                "com.apple.keylayout.russian",
+                "com.apple.keylayout.russian-pc",
+                "com.apple.keylayout.russianwin",
+            ]
+        case .ukrainian:
+            return [
+                "com.apple.keylayout.ukrainian",
+                "com.apple.keylayout.ukrainian-pc",
+            ]
+        }
+    }
+
+    var inputSourceNameHints: [String] {
+        switch self {
+        case .english:
+            return ["abc", "english", "u.s."]
+        case .russian:
+            return ["russian", "ru-"]
+        case .ukrainian:
+            return ["ukrainian", "uk-"]
+        }
     }
 }

@@ -21,7 +21,11 @@ public final class PuntoEngine: @unchecked Sendable {
     }
 
     // * -- Перемикання розкладки за фізичними клавішами --
-    public func convertLayout(_ text: String, settings: PuntoSettings) -> TransformationResult {
+    public func convertLayout(
+        _ text: String,
+        settings: PuntoSettings,
+        enabledLanguages: [PuntoLanguage] = PuntoLanguage.allCases
+    ) -> TransformationResult {
         let fallback = layoutContext?.currentLanguage ?? .english
         let detectedSource = LanguageDetector.detect(text, fallback: fallback)
         let source: PuntoLanguage
@@ -42,8 +46,8 @@ public final class PuntoEngine: @unchecked Sendable {
                 originalLanguage = context.originalLanguage
             } else {
                 source = detectedSource
-                cycle = Self.cycle(startingWith: source)
-                target = cycle[1]
+                cycle = Self.cycle(startingWith: source, enabled: enabledLanguages)
+                target = cycle.count > 1 ? cycle[1] : source
                 originalLanguage = source
             }
         case .fixedTarget:
@@ -94,7 +98,10 @@ public final class PuntoEngine: @unchecked Sendable {
     }
 
     // * -- Підказка для статусної іконки --
-    public func nextLayoutLanguageHint(settings: PuntoSettings) -> PuntoLanguage {
+    public func nextLayoutLanguageHint(
+        settings: PuntoSettings,
+        enabledLanguages: [PuntoLanguage] = PuntoLanguage.allCases
+    ) -> PuntoLanguage {
         guard settings.isEnabled else {
             return layoutContext?.currentLanguage ?? settings.fixedTargetLanguage
         }
@@ -105,21 +112,29 @@ public final class PuntoEngine: @unchecked Sendable {
         case .sequential:
             guard let context = layoutContext,
                   let index = context.cycle.firstIndex(of: context.currentLanguage) else {
-                return .russian
+                let cycle = Self.cycle(startingWith: .english, enabled: enabledLanguages)
+                return cycle.count > 1 ? cycle[1] : .russian
             }
             return context.cycle[(index + 1) % context.cycle.count]
         }
     }
 
     // Цикл залежить від мови початкового фрагмента, щоб повторними натисканнями можна було повернутися назад.
-    private static func cycle(startingWith language: PuntoLanguage) -> [PuntoLanguage] {
+    private static func cycle(startingWith language: PuntoLanguage, enabled: [PuntoLanguage]) -> [PuntoLanguage] {
+        let fullCycle: [PuntoLanguage]
         switch language {
         case .english:
-            return [.english, .russian, .ukrainian]
+            fullCycle = [.english, .russian, .ukrainian]
         case .russian:
-            return [.russian, .english, .ukrainian]
+            fullCycle = [.russian, .english, .ukrainian]
         case .ukrainian:
-            return [.ukrainian, .english, .russian]
+            fullCycle = [.ukrainian, .english, .russian]
         }
+
+        let filtered = fullCycle.filter { enabled.contains($0) }
+        if !filtered.contains(language) {
+            return [language] + filtered
+        }
+        return filtered
     }
 }

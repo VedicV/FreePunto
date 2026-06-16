@@ -11,6 +11,7 @@ struct TextTarget {
     enum Source {
         case selectedText
         case previousWord
+        case googleSheetsCell
     }
 }
 
@@ -52,11 +53,14 @@ private struct TextInteractionContext {
     let focusedElement: AXUIElement?
     let selectionCopyTimeout: TimeInterval
     let preferPasteboardSelectionRead: Bool
+    let requiresPasteboardSelectionConfirmation: Bool
     let requiresEditableFocusedElementForSelectionRead: Bool
     let replacementOrder: [ReplacementMethod]
     let requiresVerifiedAccessibilityWrite: Bool
     let verifyPasteboardReplaceWhenPossible: Bool
     let deleteSelectionBeforePaste: Bool
+    let deletePreviousWordBeforePaste: Bool
+    let allowsAccessibilityPreviousWordRead: Bool
     let prefersWordNavigationFallback: Bool
     let pasteReplaceTimeout: TimeInterval
 }
@@ -83,6 +87,8 @@ final class TextIOController {
         "dev.warp.Warp-Stable",
         "net.kovidgoyal.kitty",
         "com.mitchellh.ghostty",
+        "com.github.wez.wezterm",
+        "co.zeit.hyper",
     ]
 
     private static let browserBundleIdentifiers: Set<String> = [
@@ -105,9 +111,30 @@ final class TextIOController {
     // * -- Читання тексту для перетворення --
     func readTarget() -> TextTarget? {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
-        let context = resolveInteractionContext(hasAccessibility: hasAccessibility)
+        var context = resolveInteractionContext(hasAccessibility: hasAccessibility)
         let focusedElement = context.focusedElement
-        let shouldReadSelection = shouldReadSelectionText(from: focusedElement, context: context)
+
+        if context.profile == .terminal,
+            let terminalWord = readTerminalPreviousWordWithAccessibility(focused: focusedElement)
+        {
+            return TextTarget(
+                text: terminalWord.word,
+                source: .previousWord,
+                trailingSpacesCount: terminalWord.trailingSpacesCount,
+                accessibilitySelection: nil
+            )
+        }
+
+        if context.profile == .googleSheets {
+            if let cellTarget = readGoogleSheetsCellTarget(context: context) {
+                return cellTarget
+            }
+            context = browserEditingContext(focusedElement: focusedElement)
+        }
+
+        let shouldReadSelection =
+            context.profile != .terminal
+            && shouldReadSelectionText(from: focusedElement, context: context)
 
         // 1. Для стандартних застосунків спочатку пробуємо поточне виділення через Accessibility.
         if shouldReadSelection,
@@ -130,13 +157,17 @@ final class TextIOController {
             !copiedSelection.isEmpty
         {
             let accessibilitySelection = focusedElement.flatMap {
-                readSelectedTextWithAccessibility(focused: $0)
+                readSelectedTextWithAccessibility(focused: $0, copiedText: copiedSelection)
             }
 
             // Для редакторів із нестандартним Cmd+C (наприклад, VS Code копіює рядок
             // за відсутності виділення) довіряємо pasteboard тільки якщо AX підтвердив
             // наявність виділення або якщо профіль не потребує додаткової верифікації.
-            if !context.preferPasteboardSelectionRead || accessibilitySelection != nil {
+            if !context.requiresPasteboardSelectionConfirmation
+                || accessibilitySelection != nil
+                || shouldTrustPasteboardSelectionWithoutAccessibility(
+                    copiedSelection, context: context)
+            {
                 return TextTarget(
                     text: copiedSelection,
                     source: .selectedText,
@@ -161,7 +192,8 @@ final class TextIOController {
         }
 
         // 4. Якщо виділення немає і доступний Accessibility, беремо слово перед курсором через Accessibility.
-        if let focused = focusedElement,
+        if context.allowsAccessibilityPreviousWordRead,
+            let focused = focusedElement,
             let selection = readPreviousWordWithAccessibility(focused: focused)
         {
             return TextTarget(
@@ -173,9 +205,9 @@ final class TextIOController {
         }
 
         // 5. Якщо Accessibility недоступний або не повернув слово перед курсором, використовуємо клавіатурний fallback.
-        if context.profile != .terminal,
-            let fallbackResult = selectAndCopyPreviousWordThroughKeyboard(
+        if let fallbackResult = selectAndCopyPreviousWordThroughKeyboard(
                 focusedElement: focusedElement,
+                profile: context.profile,
                 preferWordNavigation: context.prefersWordNavigationFallback,
                 copyTimeout: context.selectionCopyTimeout
             )
@@ -196,6 +228,13 @@ final class TextIOController {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
         let context = resolveInteractionContext(hasAccessibility: hasAccessibility)
         let verificationSelection = target.accessibilitySelection
+
+        if target.source == .googleSheetsCell {
+            return replaceGoogleSheetsCellThroughEditMode(
+                with: replacement,
+                settleTimeout: context.pasteReplaceTimeout
+            )
+        }
 
         // Коли текст отримано через AX (слово перед курсором без візуального виділення),
         // спочатку пробуємо .accessibility, який викличе setSelectedTextRange,
@@ -234,6 +273,8 @@ final class TextIOController {
                     with: replacement,
                     settleTimeout: context.pasteReplaceTimeout,
                     deleteSelectionBeforePaste: context.deleteSelectionBeforePaste,
+                    deletePreviousWordBeforePaste: context.deletePreviousWordBeforePaste
+                        && target.source == .previousWord,
                     verificationSelection: verificationSelection,
                     verifyWhenPossible: context.verifyPasteboardReplaceWhenPossible
                 )
@@ -331,6 +372,7 @@ final class TextIOController {
         with replacement: String,
         settleTimeout: TimeInterval,
         deleteSelectionBeforePaste: Bool,
+        deletePreviousWordBeforePaste: Bool,
         verificationSelection: AccessibilitySelection?,
         verifyWhenPossible: Bool
     ) -> Bool {
@@ -343,10 +385,14 @@ final class TextIOController {
             return false
         }
 
-        if let verificationSelection,
-            let selectedRange = verificationSelection.selectedRange
+        if deletePreviousWordBeforePaste,
+            !sendKeyboardShortcut(keyCode: KeyCode.w, flags: .maskControl)
         {
-            _ = setSelectedTextRange(selectedRange, for: verificationSelection.element)
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+
+        if deletePreviousWordBeforePaste {
             waitForKeyboardSideEffects(timeout: pollStep)
         }
 
@@ -381,22 +427,116 @@ final class TextIOController {
         return true
     }
 
-    // Читаємо виділений текст із focused AX element.
-    private func readSelectedTextWithAccessibility(focused: AXUIElement) -> AccessibilitySelection?
-    {
-        guard let selected = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused),
-            !selected.isEmpty
+    // Google Sheets у canvas/grid режимі не має нормального текстового selection.
+    private func readGoogleSheetsCellTarget(context: TextInteractionContext) -> TextTarget? {
+        guard let copiedCellText = copySelectedTextThroughPasteboard(
+            timeout: context.selectionCopyTimeout),
+            !copiedCellText.isEmpty
         else {
+            return nil
+        }
+
+        return TextTarget(
+            text: copiedCellText,
+            source: .googleSheetsCell,
+            trailingSpacesCount: 0,
+            accessibilitySelection: nil
+        )
+    }
+
+    private func replaceGoogleSheetsCellThroughEditMode(
+        with replacement: String,
+        settleTimeout: TimeInterval
+    ) -> Bool {
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
+        pasteboard.clearContents()
+
+        guard pasteboard.setString(replacement, forType: .string) else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+
+        guard activateGoogleSheetsCellEditMode() else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+
+        guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+        waitForKeyboardSideEffects(timeout: pollStep)
+
+        guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+        waitForKeyboardSideEffects(timeout: settleTimeout)
+
+        guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+        waitForKeyboardSideEffects(timeout: pollStep)
+
+        snapshot.restore(to: pasteboard)
+        return true
+    }
+
+    private func activateGoogleSheetsCellEditMode() -> Bool {
+        // Після Cmd+C Google Sheets лишає grid у copy-mode; Escape прибирає copy range.
+        _ = sendKeyboardShortcut(keyCode: KeyCode.escape, flags: [])
+        waitForKeyboardSideEffects(timeout: 0.08)
+
+        guard sendKeyboardShortcut(keyCode: KeyCode.returnKey, flags: []) else {
+            return false
+        }
+        waitForKeyboardSideEffects(timeout: 0.25)
+        return true
+    }
+
+    // Читаємо виділений текст із focused AX element.
+    private func readSelectedTextWithAccessibility(
+        focused: AXUIElement,
+        copiedText: String? = nil
+    ) -> AccessibilitySelection?
+    {
+        let selectedText = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused)
+        let range = selectedTextRange(from: focused)
+        let text: String?
+
+        if let selectedText, !selectedText.isEmpty {
+            text = selectedText
+        } else if let copiedText, !copiedText.isEmpty, let range, range.length > 0 {
+            text = copiedText
+        } else {
+            text = nil
+        }
+
+        guard let text else {
             return nil
         }
 
         return AccessibilitySelection(
             element: focused,
-            text: selected,
-            selectedRange: selectedTextRange(from: focused),
+            text: text,
+            selectedRange: range,
             currentValue: stringAttribute(kAXValueAttribute as CFString, from: focused),
             trailingSpacesCount: 0
         )
+    }
+
+    private func readTerminalPreviousWordWithAccessibility(focused: AXUIElement?) -> (
+        word: String, trailingSpacesCount: Int
+    )? {
+        guard let focused,
+            let value = stringAttribute(kAXValueAttribute as CFString, from: focused)
+        else {
+            return nil
+        }
+
+        let currentLine = value.components(separatedBy: .newlines).last ?? value
+        return lastWord(in: currentLine)
     }
 
     // Читаємо слово перед курсором через Accessibility, якщо виділення немає.
@@ -416,28 +556,42 @@ final class TextIOController {
 
         let leftStringCut = (leftString as NSString).substring(to: range.location)
 
+        guard let wordResult = lastWord(in: leftStringCut) else {
+            return nil
+        }
+
+        let wordLength = (wordResult.word as NSString).length
+        let wordStartIndex =
+            (leftStringCut as NSString).length - wordResult.trailingSpacesCount - wordLength
+
+        return AccessibilitySelection(
+            element: focused,
+            text: wordResult.word,
+            selectedRange: CFRange(location: wordStartIndex, length: wordLength),
+            currentValue: value,
+            trailingSpacesCount: wordResult.trailingSpacesCount
+        )
+    }
+
+    private func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
         // Пропускаємо хвостові пробіли.
-        var endIndex = leftStringCut.endIndex
-        while endIndex > leftStringCut.startIndex {
-            let prevIndex = leftStringCut.index(before: endIndex)
-            if leftStringCut[prevIndex].isWhitespace || leftStringCut[prevIndex].isNewline {
+        var endIndex = text.endIndex
+        while endIndex > text.startIndex {
+            let prevIndex = text.index(before: endIndex)
+            if text[prevIndex].isWhitespace || text[prevIndex].isNewline {
                 endIndex = prevIndex
             } else {
                 break
             }
         }
 
-        let wordText = leftStringCut[..<endIndex]
-        let wordStartIndex: Int
+        let wordText = text[..<endIndex]
         let word: String
         if let lastWhitespaceRange = wordText.rangeOfCharacter(
             from: .whitespacesAndNewlines, options: .backwards)
         {
-            wordStartIndex = leftStringCut.distance(
-                from: leftStringCut.startIndex, to: lastWhitespaceRange.upperBound)
             word = String(wordText.suffix(from: lastWhitespaceRange.upperBound))
         } else {
-            wordStartIndex = 0
             word = String(wordText)
         }
 
@@ -446,28 +600,42 @@ final class TextIOController {
             return nil
         }
 
-        let trailingSpacesCount = leftStringCut.distance(from: endIndex, to: leftStringCut.endIndex)
-
-        return AccessibilitySelection(
-            element: focused,
-            text: word,
-            selectedRange: CFRange(location: wordStartIndex, length: wordLength),
-            currentValue: value,
-            trailingSpacesCount: trailingSpacesCount
+        return (
+            word: word,
+            trailingSpacesCount: text.distance(from: endIndex, to: text.endIndex)
         )
     }
 
     // Клавіатурний fallback для виділення слова до курсора через виділення до початку рядка.
     private func selectAndCopyPreviousWordThroughKeyboard(
         focusedElement: AXUIElement?,
+        profile: TextInteractionProfile,
         preferWordNavigation: Bool,
         copyTimeout: TimeInterval
     ) -> (
         word: String, trailingSpacesCount: Int
     )? {
-        if let focused = focusedElement {
+        if profile != .terminal, let focused = focusedElement {
             if let role = stringAttribute(kAXRoleAttribute as CFString, from: focused) {
-                let allowedRoles: Set<String> = ["AXTextArea", "AXTextField", "AXSearchField", "AXWebArea"]
+                var allowedRoles: Set<String> = [
+                    "AXTextArea",
+                    "AXTextField",
+                    "AXSearchField",
+                    "AXWebArea",
+                    "AXComboBox",
+                    "AXCell"
+                ]
+
+                // Якщо це браузер або Google Sheets, розширюємо дозволені ролі на AXGroup,
+                // AXWindow та AXApplication на випадок неініціалізованого дерева доступності
+                // (наприклад, у Firefox). AXGroup не додаємо загально, бо термінали (WezTerm)
+                // теж повертають AXGroup, що спричиняє виконання Option+Shift+Left.
+                if profile == .browser || profile == .googleSheets {
+                    allowedRoles.insert("AXGroup")
+                    allowedRoles.insert("AXWindow")
+                    allowedRoles.insert("AXApplication")
+                }
+
                 if !allowedRoles.contains(role) {
                     return nil
                 }
@@ -481,7 +649,23 @@ final class TextIOController {
             return directWordSelection
         }
 
+        if profile == .terminal {
+            return nil
+        }
+
         return selectAndCopyPreviousWordByLineSelection(copyTimeout: copyTimeout)
+    }
+
+    private func shouldTrustPasteboardSelectionWithoutAccessibility(
+        _ text: String,
+        context: TextInteractionContext
+    ) -> Bool {
+        guard context.profile == .vscode else {
+            return false
+        }
+
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        return !normalized.hasSuffix("\n")
     }
 
     // Пробуємо вибрати попереднє слово напряму: Option+Shift+Left.
@@ -604,54 +788,55 @@ final class TextIOController {
                 focusedElement: focusedElement,
                 selectionCopyTimeout: 0.18,
                 preferPasteboardSelectionRead: true,
-                requiresEditableFocusedElementForSelectionRead: true,
+                requiresPasteboardSelectionConfirmation: true,
+                requiresEditableFocusedElementForSelectionRead: false,
                 replacementOrder: [.pasteboard, .accessibility],
                 requiresVerifiedAccessibilityWrite: true,
                 verifyPasteboardReplaceWhenPossible: false,
                 deleteSelectionBeforePaste: true,
+                deletePreviousWordBeforePaste: false,
+                allowsAccessibilityPreviousWordRead: true,
                 prefersWordNavigationFallback: true,
                 pasteReplaceTimeout: 0.55
             )
         case .googleSheets:
+            if isEditableTextElement(focusedElement) {
+                return browserEditingContext(focusedElement: focusedElement)
+            }
+
             return TextInteractionContext(
                 profile: profile,
                 focusedElement: focusedElement,
                 selectionCopyTimeout: 0.24,
                 preferPasteboardSelectionRead: true,
+                requiresPasteboardSelectionConfirmation: true,
                 requiresEditableFocusedElementForSelectionRead: false,
                 replacementOrder: [.pasteboard, .accessibility],
                 requiresVerifiedAccessibilityWrite: true,
                 verifyPasteboardReplaceWhenPossible: false,
                 deleteSelectionBeforePaste: true,
-                prefersWordNavigationFallback: true,
+                deletePreviousWordBeforePaste: false,
+                allowsAccessibilityPreviousWordRead: false,
+                prefersWordNavigationFallback: false,
                 pasteReplaceTimeout: 0.75
             )
         case .browser:
-            return TextInteractionContext(
-                profile: profile,
-                focusedElement: focusedElement,
-                selectionCopyTimeout: 0.18,
-                preferPasteboardSelectionRead: false,
-                requiresEditableFocusedElementForSelectionRead: false,
-                replacementOrder: [.accessibility, .pasteboard],
-                requiresVerifiedAccessibilityWrite: true,
-                verifyPasteboardReplaceWhenPossible: false,
-                deleteSelectionBeforePaste: true,
-                prefersWordNavigationFallback: true,
-                pasteReplaceTimeout: 0.65
-            )
+            return browserEditingContext(focusedElement: focusedElement)
         case .terminal:
             return TextInteractionContext(
                 profile: profile,
                 focusedElement: focusedElement,
                 selectionCopyTimeout: 0.18,
                 preferPasteboardSelectionRead: true,
+                requiresPasteboardSelectionConfirmation: false,
                 requiresEditableFocusedElementForSelectionRead: false,
                 replacementOrder: [.pasteboard],
                 requiresVerifiedAccessibilityWrite: false,
                 verifyPasteboardReplaceWhenPossible: false,
                 deleteSelectionBeforePaste: false,
-                prefersWordNavigationFallback: false,
+                deletePreviousWordBeforePaste: true,
+                allowsAccessibilityPreviousWordRead: false,
+                prefersWordNavigationFallback: true,
                 pasteReplaceTimeout: 0.55
             )
         case .standard:
@@ -660,15 +845,37 @@ final class TextIOController {
                 focusedElement: focusedElement,
                 selectionCopyTimeout: 0.08,
                 preferPasteboardSelectionRead: false,
+                requiresPasteboardSelectionConfirmation: false,
                 requiresEditableFocusedElementForSelectionRead: false,
                 replacementOrder: [.accessibility, .pasteboard],
                 requiresVerifiedAccessibilityWrite: false,
                 verifyPasteboardReplaceWhenPossible: false,
                 deleteSelectionBeforePaste: false,
+                deletePreviousWordBeforePaste: false,
+                allowsAccessibilityPreviousWordRead: true,
                 prefersWordNavigationFallback: false,
                 pasteReplaceTimeout: commandTimeout
             )
         }
+    }
+
+    private func browserEditingContext(focusedElement: AXUIElement?) -> TextInteractionContext {
+        TextInteractionContext(
+            profile: .browser,
+            focusedElement: focusedElement,
+            selectionCopyTimeout: 0.18,
+            preferPasteboardSelectionRead: true,
+            requiresPasteboardSelectionConfirmation: false,
+            requiresEditableFocusedElementForSelectionRead: false,
+            replacementOrder: [.pasteboard, .accessibility],
+            requiresVerifiedAccessibilityWrite: true,
+            verifyPasteboardReplaceWhenPossible: false,
+            deleteSelectionBeforePaste: true,
+            deletePreviousWordBeforePaste: false,
+            allowsAccessibilityPreviousWordRead: true,
+            prefersWordNavigationFallback: false,
+            pasteReplaceTimeout: 0.65
+        )
     }
 
     private func shouldReadSelectionText(
@@ -689,6 +896,28 @@ final class TextIOController {
         }
 
         return editable
+    }
+
+    private func isEditableTextElement(_ element: AXUIElement?) -> Bool {
+        guard let element else {
+            return false
+        }
+
+        if boolAttribute(axEditableAttributeName, from: element) == true {
+            return true
+        }
+
+        if selectedTextRange(from: element) != nil,
+            stringAttribute(kAXValueAttribute as CFString, from: element) != nil
+        {
+            return true
+        }
+
+        guard let role = stringAttribute(kAXRoleAttribute as CFString, from: element) else {
+            return false
+        }
+
+        return ["AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"].contains(role)
     }
 
     private func interactionProfile(bundleIdentifier: String?, windowTitle: String?)
@@ -884,9 +1113,13 @@ final class TextIOController {
 }
 
 private enum KeyCode {
+    static let a: CGKeyCode = 0
     static let c: CGKeyCode = 8
     static let v: CGKeyCode = 9
+    static let w: CGKeyCode = 13
+    static let returnKey: CGKeyCode = 36
     static let delete: CGKeyCode = 51
+    static let escape: CGKeyCode = 53
     static let leftArrow: CGKeyCode = 123
     static let rightArrow: CGKeyCode = 124
 }

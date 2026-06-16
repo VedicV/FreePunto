@@ -231,6 +231,6 @@ public struct TransformationResult: Sendable, Equatable {
     }
 
     public var didChange: Bool {
-        originalText != replacementText
+        originalText != replacementText || (sourceLanguage != nil && targetLanguage != nil && sourceLanguage != targetLanguage)
     }
 }
