@@ -10,18 +10,39 @@ public enum AppEnvironmentClassifier {
         "com.google.antigravity-ide",
     ]
 
-    // * -- Ключові слова інтегрованого терміналу --
-    private static let integratedTerminalKeywords = [
+    // * -- Ключові слова інтегрованого терміналу (загальні) --
+    private static let generalTerminalKeywords = [
         "terminal",
         "shell",
         "console",
         "command line",
         "pty",
+        "терминал",
+        "термінал"
+    ]
+
+    // * -- Ключові символи запросу командного рядка --
+    private static let terminalPromptIndicators = [
         "$",
         "%",
         ">",
         "❯",
-        "λ",
+        "λ"
+    ]
+
+    // * -- Назви оболонок (тільки для властивостей елемента, не для заголовка вікна) --
+    private static let shellNames = [
+        "zsh",
+        "bash",
+        "fish",
+        "sh",
+        "tmux",
+        "screen",
+        "node",
+        "npm",
+        "yarn",
+        "python",
+        "ruby"
     ]
 
     // * -- Перевірка належності до сімейства VS Code --
@@ -39,19 +60,39 @@ public enum AppEnvironmentClassifier {
         title: String?,
         description: String?,
         identifier: String?,
-        windowTitle: String?,
         value: String?
     ) -> Bool {
-        // Збираємо всі можливі властивості для пошуку ключових слів терміналу.
-        let candidates = [title, description, identifier, windowTitle, value]
+        // 1. Шукаємо загальні термінальні слова у властивостях element і значенні.
+        // Заголовок вікна не є надійним сигналом: він часто містить назви файлів або вкладок.
+        let allFields = [role, title, description, identifier, value]
             .compactMap { $0?.lowercased() }
 
-        // Якщо хоч один рядок містить ключове слово, вважаємо це терміналом.
-        return candidates.contains { candidate in
-            integratedTerminalKeywords.contains { keyword in
-                candidate.contains(keyword)
+        for field in allFields {
+            for kw in generalTerminalKeywords {
+                if field.contains(kw) { return true }
             }
         }
+
+        // 2. Шукаємо символи промпту в значенні елемента.
+        if let val = value?.lowercased() {
+            for ind in terminalPromptIndicators {
+                if val.contains(ind) { return true }
+            }
+        }
+
+        // 3. Шукаємо назви оболонок тільки у властивостях самого елемента (ігноруючи заголовок вікна).
+        let elementProps = [role, title, description, identifier]
+            .compactMap { $0?.lowercased() }
+
+        for prop in elementProps {
+            for shell in shellNames {
+                if prop == shell || prop.contains(" " + shell) || prop.contains(shell + " ") {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     // * -- Ідентифікатори автономних термінальних застосунків --
@@ -75,36 +116,4 @@ public enum AppEnvironmentClassifier {
         return standaloneTerminalIdentifiers.contains(bundleIdentifier)
     }
 
-    // * -- Підказки для визначення CanvasTable у заголовку вікна --
-    private static let canvasTableTitleHints = [
-        "canvastable",
-        "canvas table",
-    ]
-
-    // * -- Перевірка, чи є вікно застосунком CanvasTable --
-    public static func isCanvasTableApp(windowTitle: String?) -> Bool {
-        guard let title = windowTitle?.lowercased() else {
-            return false
-        }
-
-        return canvasTableTitleHints.contains { title.contains($0) }
-    }
-
-    // * -- Підказки для визначення Google Sheets у заголовку вікна --
-    private static let googleSheetsTitleHints = [
-        "google sheets",
-        "google таблицы",
-        "google таблиці",
-        "таблицы google",
-        "таблиці google",
-    ]
-
-    // * -- Перевірка, чи є вікно Google Sheets --
-    public static func isGoogleSheetsWindow(windowTitle: String?) -> Bool {
-        guard let title = windowTitle?.lowercased() else {
-            return false
-        }
-
-        return googleSheetsTitleHints.contains { title.contains($0) }
-    }
 }

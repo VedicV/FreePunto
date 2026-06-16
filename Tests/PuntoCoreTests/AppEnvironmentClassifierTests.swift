@@ -18,7 +18,6 @@ final class AppEnvironmentClassifierTests: XCTestCase {
                 title: "Terminal",
                 description: nil,
                 identifier: nil,
-                windowTitle: nil,
                 value: nil
             )
         )
@@ -29,7 +28,6 @@ final class AppEnvironmentClassifierTests: XCTestCase {
                 title: nil,
                 description: "Terminal shell",
                 identifier: "terminal",
-                windowTitle: nil,
                 value: nil
             )
         )
@@ -40,29 +38,68 @@ final class AppEnvironmentClassifierTests: XCTestCase {
                 title: "Untitled-1",
                 description: nil,
                 identifier: nil,
-                windowTitle: nil,
                 value: nil
             )
         )
 
-        XCTAssertTrue(
+        XCTAssertFalse(
             AppEnvironmentClassifier.isIntegratedTerminal(
                 role: "AXTextArea",
                 title: nil,
                 description: nil,
                 identifier: nil,
-                windowTitle: "Terminal — zsh",
                 value: nil
             )
         )
 
-        XCTAssertTrue(
+        XCTAssertFalse(
             AppEnvironmentClassifier.isIntegratedTerminal(
                 role: nil,
                 title: nil,
                 description: nil,
                 identifier: nil,
-                windowTitle: "Terminal — zsh",
+                value: nil
+            )
+        )
+    }
+
+    func testIntegratedTerminalShellNamesStayScopedToElementProperties() {
+        // Назви оболонок у властивостях елемента мають розпізнаватися
+        XCTAssertTrue(
+            AppEnvironmentClassifier.isIntegratedTerminal(
+                role: nil,
+                title: "zsh",
+                description: nil,
+                identifier: nil,
+                value: nil
+            )
+        )
+        XCTAssertTrue(
+            AppEnvironmentClassifier.isIntegratedTerminal(
+                role: nil,
+                title: nil,
+                description: "active bash shell",
+                identifier: nil,
+                value: nil
+            )
+        )
+
+        // Назви оболонок у назві файлу НЕ мають призводити до хибного детекту терміналу
+        XCTAssertFalse(
+            AppEnvironmentClassifier.isIntegratedTerminal(
+                role: "AXTextArea",
+                title: ".zshrc",
+                description: nil,
+                identifier: nil,
+                value: nil
+            )
+        )
+        XCTAssertFalse(
+            AppEnvironmentClassifier.isIntegratedTerminal(
+                role: "AXTextArea",
+                title: "script.sh",
+                description: nil,
+                identifier: nil,
                 value: nil
             )
         )

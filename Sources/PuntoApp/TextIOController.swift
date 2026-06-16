@@ -5,36 +5,37 @@ import PuntoCore
 // * -- Текстова ціль команди --
 struct TextTarget {
     let text: String
-    let source: Source
     let trailingSpacesCount: Int
     let wordLength: Int
-    fileprivate let profile: AppProfile
-    fileprivate let accessibilitySelection: AccessibilitySelection?
-
-    enum Source {
-        case selectedText
-        case previousWord
-        case gridCell
-    }
+    fileprivate let origin: ReadOrigin
 }
 
-// * -- Профіль взаємодії з текстом --
-private enum AppProfile {
-    case standardText
-    case vscodeEditor
-    case integratedTerminal
+// * -- Фактичний спосіб, яким текст був прочитаний --
+private enum ReadOrigin {
+    case copiedEditableSelection
+    case copiedCodeEditorSelection
+    case copiedBrowserGridLike
+    case editableAXLastWord
+    case codeEditorAXLastWord
+    case integratedTerminalAXLastWord
+    case standaloneTerminalAXLastWord
+}
+
+// * -- Тип активного застосунку --
+private enum AppKind {
     case standaloneTerminal
-    case googleSheetsGrid
-    case canvasGrid
+    case integratedTerminal
+    case codeEditor
+    case browser
+    case other
 }
 
-// * -- Допоміжні типи --
-private struct AccessibilitySelection {
-    let element: AXUIElement
-    let text: String
-    let selectedRange: CFRange?
-    let currentValue: String?
-    let trailingSpacesCount: Int
+// * -- Контекст активного застосунку і focused Accessibility element --
+private struct InteractionContext {
+    let appKind: AppKind
+    let focusedElement: AXUIElement?
+    let role: String?
+    let isEditable: Bool
 }
 
 private let axEditableAttributeName: CFString = "AXEditable" as CFString
@@ -66,103 +67,9 @@ final class TextIOController {
 
     // MARK: - Діагностичний трейс
 
-    // Логування подій для діагностики (профіль, метод читання/заміни, ключові події).
     private func trace(_ message: @autoclosure () -> String) {
         guard Self.traceEnabled else { return }
         NSLog("[TextIO] %@", message())
-    }
-
-    // MARK: - Визначення профілю
-
-    // * -- Визначення профілю за пріоритетом --
-    private func detectProfile(
-        bundleIdentifier: String?,
-        focusedElement: AXUIElement?,
-        windowTitle: String?
-    ) -> AppProfile {
-        guard let bundleIdentifier else {
-            return .standardText
-        }
-
-        // 1. Автономний термінал (iTerm, Terminal.app, Warp тощо).
-        if AppEnvironmentClassifier.isStandaloneTerminal(bundleIdentifier: bundleIdentifier) {
-            return .standaloneTerminal
-        }
-
-        // 2. Інтегрований термінал VS Code / Antigravity.
-        if AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundleIdentifier) {
-            if isIntegratedTerminalElement(focusedElement, windowTitle: windowTitle) {
-                return .integratedTerminal
-            }
-            // 3. Редакторна панель VS Code.
-            return .vscodeEditor
-        }
-
-        // 4. Google Sheets (незалежно від браузера чи PWA).
-        if AppEnvironmentClassifier.isGoogleSheetsWindow(windowTitle: windowTitle) {
-            if isEditableTextField(focusedElement) {
-                return .standardText
-            }
-            return .googleSheetsGrid
-        }
-
-        // 5. CanvasTable (наш застосунок, може бути Electron чи веб-версія).
-        if AppEnvironmentClassifier.isCanvasTableApp(windowTitle: windowTitle) {
-            if isEditableTextField(focusedElement) {
-                return .standardText
-            }
-            return .canvasGrid
-        }
-
-        // 6. Браузер (загальний).
-        if browserBundleIdentifiers.contains(bundleIdentifier) {
-            return .standardText
-        }
-
-        // 7. Все інше.
-        return .standardText
-    }
-
-    // Перевірка, чи елемент є інтегрованим терміналом VS Code.
-    private func isIntegratedTerminalElement(
-        _ focusedElement: AXUIElement?,
-        windowTitle: String?
-    ) -> Bool {
-        let effectiveWindowTitle = windowTitle
-            ?? frontmostWindowTitle(
-                processIdentifier: NSWorkspace.shared.frontmostApplication?.processIdentifier)
-
-        guard let focusedElement else {
-            return AppEnvironmentClassifier.isIntegratedTerminal(
-                role: nil, title: nil, description: nil,
-                identifier: nil, windowTitle: effectiveWindowTitle, value: nil)
-        }
-
-        return AppEnvironmentClassifier.isIntegratedTerminal(
-            role: stringAttribute(kAXRoleAttribute as CFString, from: focusedElement),
-            title: stringAttribute(kAXTitleAttribute as CFString, from: focusedElement),
-            description: stringAttribute(kAXDescriptionAttribute as CFString, from: focusedElement),
-            identifier: stringAttribute(kAXIdentifierAttribute as CFString, from: focusedElement),
-            windowTitle: effectiveWindowTitle,
-            value: stringAttribute(kAXValueAttribute as CFString, from: focusedElement))
-    }
-
-    // Перевірка, чи фокус на редагованому текстовому полі (для браузерів).
-    private func isEditableTextField(_ element: AXUIElement?) -> Bool {
-        guard let element else { return false }
-
-        if boolAttribute(axEditableAttributeName, from: element) == true {
-            return true
-        }
-        if selectedTextRange(from: element) != nil,
-            stringAttribute(kAXValueAttribute as CFString, from: element) != nil
-        {
-            return true
-        }
-        guard let role = stringAttribute(kAXRoleAttribute as CFString, from: element) else {
-            return false
-        }
-        return ["AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"].contains(role)
     }
 
     // MARK: - Читання тексту
@@ -172,152 +79,97 @@ final class TextIOController {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
         let frontmostApp = NSWorkspace.shared.frontmostApplication
         let focusedElement = hasAccessibility ? focusedTextElement() : nil
-        let windowTitle =
-            hasAccessibility
-            ? frontmostWindowTitle(processIdentifier: frontmostApp?.processIdentifier)
-            : nil
-
-        let profile = detectProfile(
+        let context = makeInteractionContext(
             bundleIdentifier: frontmostApp?.bundleIdentifier,
-            focusedElement: focusedElement,
-            windowTitle: windowTitle)
+            focusedElement: focusedElement)
 
-        trace("profile=\(profile) bundle=\(frontmostApp?.bundleIdentifier ?? "nil") window=\(windowTitle ?? "nil")")
+        trace(
+            "context=\(context.appKind) bundle=\(frontmostApp?.bundleIdentifier ?? "nil") role=\(context.role ?? "nil") editable=\(context.isEditable)"
+        )
 
-        switch profile {
-        case .standardText:
-            return readStandardText(focusedElement: focusedElement, profile: profile)
-        case .vscodeEditor:
-            return readVSCodeEditor(focusedElement: focusedElement, profile: profile)
-        case .integratedTerminal:
-            return readTerminal(focusedElement: focusedElement, profile: profile)
+        switch context.appKind {
         case .standaloneTerminal:
-            return readTerminal(focusedElement: focusedElement, profile: profile)
-        case .googleSheetsGrid:
-            return readGridCell(focusedElement: focusedElement, profile: profile)
-        case .canvasGrid:
-            return readGridCell(focusedElement: focusedElement, profile: profile)
+            return readTerminalLastWord(
+                focusedElement: context.focusedElement,
+                origin: .standaloneTerminalAXLastWord)
+        case .integratedTerminal:
+            return readTerminalLastWord(
+                focusedElement: context.focusedElement,
+                origin: .integratedTerminalAXLastWord)
+        case .codeEditor:
+            return readCodeEditorTarget(context)
+        case .browser:
+            return context.isEditable
+                ? readEditableTarget(
+                    context,
+                    copiedOrigin: .copiedEditableSelection,
+                    axOrigin: .editableAXLastWord,
+                    tracePrefix: "browserEditable")
+                : readBrowserGridLikeTarget()
+        case .other:
+            guard context.isEditable else {
+                trace("other: non-editable context без безпечної стратегії запису")
+                return nil
+            }
+            return readEditableTarget(
+                context,
+                copiedOrigin: .copiedEditableSelection,
+                axOrigin: .editableAXLastWord,
+                tracePrefix: "editable")
         }
     }
 
-    // * -- standardText: AX selectedText → AX previousWord → pasteboard Cmd+C → клавіатурний fallback --
-    private func readStandardText(focusedElement: AXUIElement?, profile: AppProfile) -> TextTarget? {
-        // 1. AX виділення.
-        if let focused = focusedElement,
-            let selection = readSelectedTextWithAccessibility(focused: focused)
-        {
-            trace("standardText: читання через AX selectedText")
-            return TextTarget(
-                text: selection.text, source: .selectedText,
-                trailingSpacesCount: 0, wordLength: (selection.text as NSString).length,
-                profile: profile, accessibilitySelection: selection)
-        }
-
-        // 2. AX попереднє слово.
-        if let focused = focusedElement,
-            let selection = readPreviousWordWithAccessibility(focused: focused)
-        {
-            trace("standardText: читання через AX previousWord")
-            return TextTarget(
-                text: selection.text, source: .previousWord,
-                trailingSpacesCount: selection.trailingSpacesCount,
-                wordLength: (selection.text as NSString).length,
-                profile: profile, accessibilitySelection: selection)
-        }
-
-        // 3. Pasteboard Cmd+C.
-        if let copiedSelection = copySelectedTextThroughPasteboard(timeout: 0.08),
-            !copiedSelection.isEmpty
-        {
-            trace("standardText: читання через pasteboard Cmd+C")
-            let axSel = focusedElement.flatMap {
-                readSelectedTextWithAccessibility(focused: $0, copiedText: copiedSelection)
+    private func readCodeEditorTarget(_ context: InteractionContext) -> TextTarget? {
+        if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
+            if looksLikeAutomaticLineCopy(copiedText) {
+                trace("codeEditor: відкинуто автоматичний line-copy")
+            } else {
+                trace("codeEditor: читання через Cmd+C")
+                return makeCopiedTarget(copiedText, origin: .copiedCodeEditorSelection)
             }
-            return TextTarget(
-                text: copiedSelection, source: .selectedText,
-                trailingSpacesCount: 0, wordLength: (copiedSelection as NSString).length,
-                profile: profile, accessibilitySelection: axSel)
         }
 
-        // 4. Клавіатурний fallback (Cmd+Shift+Left).
-        if let fallback = selectAndCopyPreviousWordByLineSelection(copyTimeout: 0.08) {
-            trace("standardText: клавіатурний fallback")
-            return TextTarget(
-                text: fallback.word, source: .previousWord,
-                trailingSpacesCount: fallback.trailingSpacesCount,
-                wordLength: (fallback.word as NSString).length,
-                profile: profile, accessibilitySelection: nil)
-        }
-
-        return nil
+        return readAXLastWord(
+            focusedElement: context.focusedElement,
+            origin: .codeEditorAXLastWord,
+            tracePrefix: "codeEditor")
     }
 
-    // * -- vscodeEditor: Pasteboard Cmd+C (з AX підтвердженням) → AX selectedText → Option+Shift+Left fallback --
-    private func readVSCodeEditor(focusedElement: AXUIElement?, profile: AppProfile) -> TextTarget? {
-        // 1. Pasteboard Cmd+C — основний метод для VS Code.
-        if let copiedText = copySelectedTextThroughPasteboard(timeout: 0.18),
-            !copiedText.isEmpty
-        {
-            // VS Code копіює рядок, якщо немає виділення — перевіряємо через AX або евристику.
-            let axSel = focusedElement.flatMap {
-                readSelectedTextWithAccessibility(focused: $0, copiedText: copiedText)
-            }
-            let normalized = copiedText.replacingOccurrences(of: "\r\n", with: "\n")
-            if axSel != nil || !normalized.hasSuffix("\n") {
-                trace("vscodeEditor: pasteboard Cmd+C")
-                return TextTarget(
-                    text: copiedText, source: .selectedText,
-                    trailingSpacesCount: 0, wordLength: (copiedText as NSString).length,
-                    profile: profile, accessibilitySelection: axSel)
-            }
+    private func readEditableTarget(
+        _ context: InteractionContext,
+        copiedOrigin: ReadOrigin,
+        axOrigin: ReadOrigin,
+        tracePrefix: String
+    ) -> TextTarget? {
+        if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
+            trace("\(tracePrefix): читання через Cmd+C")
+            return makeCopiedTarget(copiedText, origin: copiedOrigin)
         }
 
-        // 2. AX selectedText.
-        if let focused = focusedElement,
-            let selection = readSelectedTextWithAccessibility(focused: focused)
-        {
-            trace("vscodeEditor: AX selectedText")
-            return TextTarget(
-                text: selection.text, source: .selectedText,
-                trailingSpacesCount: 0, wordLength: (selection.text as NSString).length,
-                profile: profile, accessibilitySelection: selection)
-        }
-
-        // 3. AX попереднє слово.
-        if let focused = focusedElement,
-            let selection = readPreviousWordWithAccessibility(focused: focused)
-        {
-            trace("vscodeEditor: AX previousWord")
-            return TextTarget(
-                text: selection.text, source: .previousWord,
-                trailingSpacesCount: selection.trailingSpacesCount,
-                wordLength: (selection.text as NSString).length,
-                profile: profile, accessibilitySelection: selection)
-        }
-
-        // 4. Fallback через Option+Shift+Left (word navigation).
-        if let wordNav = selectAndCopyPreviousWordWithWordNavigation(copyTimeout: 0.18) {
-            trace("vscodeEditor: word navigation fallback")
-            return TextTarget(
-                text: wordNav.word, source: .previousWord,
-                trailingSpacesCount: wordNav.trailingSpacesCount,
-                wordLength: (wordNav.word as NSString).length,
-                profile: profile, accessibilitySelection: nil)
-        }
-
-        return nil
+        return readAXLastWord(
+            focusedElement: context.focusedElement,
+            origin: axOrigin,
+            tracePrefix: tracePrefix)
     }
 
-    // * -- Terminal (інтегрований і автономний): AX value → lastWord. Інше → nil (beep). --
-    private func readTerminal(focusedElement: AXUIElement?, profile: AppProfile) -> TextTarget? {
-        guard let focused = focusedElement,
-            let value = stringAttribute(kAXValueAttribute as CFString, from: focused)
-        else {
-            trace("terminal: AX value недоступний")
+    private func readBrowserGridLikeTarget() -> TextTarget? {
+        guard let copiedText = copyTextThroughPasteboard(timeout: 0.18) else {
+            trace("browserGrid: Cmd+C не дав текст")
             return nil
         }
 
-        // Знаходимо останній непорожній рядок і останнє слово з нього.
+        trace("browserGrid: читання через Cmd+C")
+        return makeCopiedTarget(copiedText, origin: .copiedBrowserGridLike)
+    }
+
+    private func readTerminalLastWord(focusedElement: AXUIElement?, origin: ReadOrigin) -> TextTarget? {
+        guard let focusedElement,
+            let value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
+        else {
+            trace("terminal: AXValue недоступний")
+            return nil
+        }
+
         let lines = value.components(separatedBy: .newlines)
         guard
             let currentLine = lines.last(where: {
@@ -329,123 +181,82 @@ final class TextIOController {
             return nil
         }
 
-        trace("terminal: слово='\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
-        return TextTarget(
-            text: wordResult.word, source: .previousWord,
-            trailingSpacesCount: wordResult.trailingSpacesCount,
-            wordLength: (wordResult.word as NSString).length,
-            profile: profile, accessibilitySelection: nil)
+        trace("terminal: AXValue слово='\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+        return makeLastWordTarget(wordResult, origin: origin)
     }
 
-    // * -- Grid (Google Sheets / CanvasTable): AX cell value. Уникаємо Cmd+C. --
-    private func readGridCell(focusedElement: AXUIElement?, profile: AppProfile) -> TextTarget? {
-        guard let focused = focusedElement else {
-            trace("grid: немає focused element")
-            return nil
-        }
-
-        let role = stringAttribute(kAXRoleAttribute as CFString, from: focused)
-        let selectedText = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused)
-        let valueText = stringAttribute(kAXValueAttribute as CFString, from: focused)
-
-        guard
-            let cellText = AccessibilityTextSelection.preferredText(
-                selectedText: selectedText, valueText: valueText, role: role),
-            !cellText.isEmpty
+    private func readAXLastWord(
+        focusedElement: AXUIElement?,
+        origin: ReadOrigin,
+        tracePrefix: String
+    ) -> TextTarget? {
+        guard let focusedElement,
+            let value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement),
+            let wordResult = lastWord(in: value)
         else {
-            trace("grid: AX cell value порожній")
+            trace("\(tracePrefix): AXValue не дав останнє слово")
             return nil
         }
 
-        trace("grid: cellText='\(cellText)'")
-        return TextTarget(
-            text: cellText, source: .gridCell,
-            trailingSpacesCount: 0, wordLength: (cellText as NSString).length,
-            profile: profile, accessibilitySelection: nil)
+        trace("\(tracePrefix): AXValue слово='\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+        return makeLastWordTarget(wordResult, origin: origin)
+    }
+
+    private func makeCopiedTarget(_ text: String, origin: ReadOrigin) -> TextTarget {
+        TextTarget(
+            text: text,
+            trailingSpacesCount: 0,
+            wordLength: (text as NSString).length,
+            origin: origin)
+    }
+
+    private func makeLastWordTarget(
+        _ wordResult: (word: String, trailingSpacesCount: Int),
+        origin: ReadOrigin
+    ) -> TextTarget {
+        TextTarget(
+            text: wordResult.word,
+            trailingSpacesCount: wordResult.trailingSpacesCount,
+            wordLength: (wordResult.word as NSString).length,
+            origin: origin)
     }
 
     // MARK: - Заміна тексту
 
-    // * -- Заміна поточного виділення --
+    // * -- Заміна поточної цілі за фактичним origin читання --
     func replace(_ target: TextTarget, with replacement: String) -> Bool {
-        trace("replace: profile=\(target.profile) source=\(target.source) wordLen=\(target.wordLength)")
+        trace("replace: origin=\(target.origin) wordLen=\(target.wordLength)")
 
-        switch target.profile {
-        case .standardText:
-            return replaceStandardText(target, with: replacement)
-        case .vscodeEditor:
-            return replaceVSCodeEditor(target, with: replacement)
-        case .integratedTerminal:
-            return replaceIntegratedTerminal(target, with: replacement)
-        case .standaloneTerminal:
-            return replaceStandaloneTerminal(target, with: replacement)
-        case .googleSheetsGrid, .canvasGrid:
-            return replaceGridCell(with: replacement)
+        switch target.origin {
+        case .copiedEditableSelection, .copiedCodeEditorSelection:
+            return pasteReplacement(replacement, settleTimeout: commandTimeout)
+        case .editableAXLastWord, .codeEditorAXLastWord, .integratedTerminalAXLastWord:
+            return replaceLastWordByBackspace(target, with: replacement, settleTimeout: 0.55)
+        case .standaloneTerminalAXLastWord:
+            return replaceStandaloneTerminalLastWord(target, with: replacement)
+        case .copiedBrowserGridLike:
+            return replaceBrowserGridLike(with: replacement)
         }
     }
 
-    // * -- standardText: AX setSelectedText → якщо не вдалося → Cmd+V --
-    private func replaceStandardText(_ target: TextTarget, with replacement: String) -> Bool {
-        if let selection = target.accessibilitySelection {
-            if replaceWithAccessibility(selection, replacement: replacement,
-                trailingSpacesCount: target.trailingSpacesCount)
-            {
-                trace("standardText: замінено через AX")
-                return true
-            }
-        }
-
-        // Fallback: Cmd+V через pasteboard.
-        let ok = pasteReplacement(
-            replacement, settleTimeout: commandTimeout,
-            deleteBeforePaste: false,
-            verificationSelection: target.accessibilitySelection)
-        if ok { trace("standardText: замінено через Cmd+V") }
-        return ok
-    }
-
-    // * -- vscodeEditor: Delete + Cmd+V → якщо не вдалося → AX --
-    private func replaceVSCodeEditor(_ target: TextTarget, with replacement: String) -> Bool {
-        // Якщо у нас є Accessibility-виділення, спочатку пробуємо AX.
-        if let selection = target.accessibilitySelection {
-            if replaceWithAccessibility(selection, replacement: replacement,
-                trailingSpacesCount: target.trailingSpacesCount)
-            {
-                trace("vscodeEditor: замінено через AX")
-                return true
-            }
-        }
-
-        // Основний метод: Delete + Cmd+V.
-        if pasteReplacement(
-            replacement, settleTimeout: 0.55,
-            deleteBeforePaste: true,
-            verificationSelection: nil)
-        {
-            trace("vscodeEditor: замінено через Delete+Cmd+V")
-            return true
-        }
-
-        return false
-    }
-
-    // * -- integratedTerminal: Backspace×N + Cmd+V (НІКОЛИ Ctrl+W і escape-послідовності!) --
-    private func replaceIntegratedTerminal(_ target: TextTarget, with replacement: String) -> Bool {
+    private func replaceLastWordByBackspace(
+        _ target: TextTarget,
+        with replacement: String,
+        settleTimeout: TimeInterval
+    ) -> Bool {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
-        // Додаємо хвостові пробіли до заміни, щоб відновити їх після вставки.
         let replacementWithSpaces = replacement + String(repeating: " ", count: target.trailingSpacesCount)
         guard pasteboard.setString(replacementWithSpaces, forType: .string) else {
             snapshot.restore(to: pasteboard)
             return false
         }
 
-        // Видаляємо слово та хвостові пробіли посимвольно через Backspace.
         let totalDeleteLength = target.wordLength + target.trailingSpacesCount
         for i in 0..<totalDeleteLength {
             guard sendKeyboardShortcut(keyCode: KeyCode.delete, flags: []) else {
-                trace("integratedTerminal: Backspace \(i) не вдався")
+                trace("replaceLastWord: Backspace \(i) не вдався")
                 snapshot.restore(to: pasteboard)
                 return false
             }
@@ -454,31 +265,26 @@ final class TextIOController {
             waitForKeyboardSideEffects(timeout: 0.05)
         }
 
-        // Вставляємо заміну через Cmd+V.
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.55)
+        waitForKeyboardSideEffects(timeout: settleTimeout)
 
-        trace("integratedTerminal: Backspace×\(totalDeleteLength) + Cmd+V")
         snapshot.restore(to: pasteboard)
         return true
     }
 
-    // * -- standaloneTerminal: Ctrl+W + Cmd+V --
-    private func replaceStandaloneTerminal(_ target: TextTarget, with replacement: String) -> Bool {
+    private func replaceStandaloneTerminalLastWord(_ target: TextTarget, with replacement: String) -> Bool {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
-        // Додаємо хвостові пробіли до заміни, щоб відновити їх після вставки.
         let replacementWithSpaces = replacement + String(repeating: " ", count: target.trailingSpacesCount)
         guard pasteboard.setString(replacementWithSpaces, forType: .string) else {
             snapshot.restore(to: pasteboard)
             return false
         }
 
-        // Ctrl+W видаляє попереднє слово та хвостові пробіли в bash/zsh.
         guard sendKeyboardShortcut(keyCode: KeyCode.w, flags: .maskControl) else {
             snapshot.restore(to: pasteboard)
             return false
@@ -496,8 +302,7 @@ final class TextIOController {
         return true
     }
 
-    // * -- Grid (Google Sheets / CanvasTable): Escape×2 → Enter → Cmd+A → Cmd+V --
-    private func replaceGridCell(with replacement: String) -> Bool {
+    private func replaceBrowserGridLike(with replacement: String) -> Bool {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
@@ -506,109 +311,48 @@ final class TextIOController {
             return false
         }
 
-        // Подвійний Escape — гарантовано виходимо з copy-mode.
-        _ = sendKeyboardShortcut(keyCode: KeyCode.escape, flags: [])
-        waitForKeyboardSideEffects(timeout: 0.20)
-        _ = sendKeyboardShortcut(keyCode: KeyCode.escape, flags: [])
-        waitForKeyboardSideEffects(timeout: 0.15)
-
-        // Enter — активуємо режим редагування комірки (НЕ F2).
-        guard sendKeyboardShortcut(keyCode: KeyCode.returnKey, flags: []) else {
+        guard sendKeyboardShortcut(keyCode: KeyCode.f2, flags: []) else {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.45)
+        waitForKeyboardSideEffects(timeout: 0.35)
 
-        // Cmd+A — виділяємо весь вміст комірки.
+        guard isFocusedContextEditable() else {
+            trace("browserGrid: F2 не перевів фокус у edit mode")
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+
         guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.08)
 
-        // Cmd+V — вставляємо заміну.
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.75)
+        waitForKeyboardSideEffects(timeout: 0.55)
 
-        trace("grid: Esc×2 → Enter → Cmd+A → Cmd+V")
+        guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
+            snapshot.restore(to: pasteboard)
+            return false
+        }
+        waitForKeyboardSideEffects(timeout: 0.08)
+
+        trace("browserGrid: F2 → Cmd+A → Cmd+V → Cmd+A")
         snapshot.restore(to: pasteboard)
         return true
     }
 
-    // MARK: - Допоміжні методи заміни
-
-    // Заміна через AX setSelectedText з верифікацією.
-    private func replaceWithAccessibility(
-        _ selection: AccessibilitySelection,
-        replacement: String,
-        trailingSpacesCount: Int
-    ) -> Bool {
-        // Відновлюємо діапазон виділення, якщо він відомий.
-        if let selectedRange = selection.selectedRange {
-            _ = setSelectedTextRange(selectedRange, for: selection.element)
-        }
-
-        let result = AXUIElementSetAttributeValue(
-            selection.element,
-            kAXSelectedTextAttribute as CFString,
-            replacement as CFString)
-
-        guard result == .success else {
-            return false
-        }
-
-        // Верифікація: порівнюємо очікуване значення з поточним.
-        if let selectedRange = selection.selectedRange,
-            selectedRange.location >= 0, selectedRange.length >= 0,
-            let previousValue = selection.currentValue,
-            let currentValue = stringAttribute(kAXValueAttribute as CFString, from: selection.element)
-        {
-            let prev = previousValue as NSString
-            let start = selectedRange.location
-            let end = selectedRange.location + selectedRange.length
-            if start <= prev.length, end <= prev.length {
-                let expected = prev.substring(to: start) + replacement + prev.substring(from: end)
-                if currentValue != expected {
-                    return false
-                }
-            }
-        }
-
-        // Переміщуємо курсор після trailing пробілів.
-        if trailingSpacesCount > 0, let selectedRange = selection.selectedRange {
-            let newCaret =
-                selectedRange.location + (replacement as NSString).length + trailingSpacesCount
-            _ = setSelectedTextRange(
-                CFRange(location: newCaret, length: 0), for: selection.element)
-        }
-
-        return true
-    }
-
-    // Вставка заміни через pasteboard (Cmd+V), опціонально з попереднім Delete.
-    private func pasteReplacement(
-        _ replacement: String,
-        settleTimeout: TimeInterval,
-        deleteBeforePaste: Bool,
-        verificationSelection: AccessibilitySelection?
-    ) -> Bool {
+    private func pasteReplacement(_ replacement: String, settleTimeout: TimeInterval) -> Bool {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
         guard pasteboard.setString(replacement, forType: .string) else {
             snapshot.restore(to: pasteboard)
             return false
-        }
-
-        if deleteBeforePaste {
-            guard sendKeyboardShortcut(keyCode: KeyCode.delete, flags: []) else {
-                snapshot.restore(to: pasteboard)
-                return false
-            }
-            waitForKeyboardSideEffects(timeout: pollStep)
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
@@ -621,65 +365,103 @@ final class TextIOController {
         return true
     }
 
-    // MARK: - Низькорівневі допоміжні методи
+    // MARK: - Контекст застосунку
 
-    // * -- Читання виділеного тексту через AX --
-    private func readSelectedTextWithAccessibility(
-        focused: AXUIElement,
-        copiedText: String? = nil
-    ) -> AccessibilitySelection? {
-        let selectedText = stringAttribute(kAXSelectedTextAttribute as CFString, from: focused)
-        let range = selectedTextRange(from: focused)
-        let text: String?
-
-        if let selectedText, !selectedText.isEmpty {
-            text = selectedText
-        } else if let copiedText, !copiedText.isEmpty, let range, range.length > 0 {
-            text = copiedText
-        } else {
-            text = nil
+    private func makeInteractionContext(
+        bundleIdentifier: String?,
+        focusedElement: AXUIElement?
+    ) -> InteractionContext {
+        let role = focusedElement.flatMap {
+            stringAttribute(kAXRoleAttribute as CFString, from: $0)
         }
+        let appKind = appKind(bundleIdentifier: bundleIdentifier, focusedElement: focusedElement)
+        let isEditable = focusedElement.map {
+            isEditableContext($0, role: role)
+        } ?? false
 
-        guard let text else { return nil }
-
-        return AccessibilitySelection(
-            element: focused, text: text, selectedRange: range,
-            currentValue: stringAttribute(kAXValueAttribute as CFString, from: focused),
-            trailingSpacesCount: 0)
+        return InteractionContext(
+            appKind: appKind,
+            focusedElement: focusedElement,
+            role: role,
+            isEditable: isEditable)
     }
 
-    // * -- Читання попереднього слова через AX (курсор без виділення) --
-    private func readPreviousWordWithAccessibility(focused: AXUIElement) -> AccessibilitySelection? {
-        guard let range = selectedTextRange(from: focused),
-            range.length == 0,
-            let value = stringAttribute(kAXValueAttribute as CFString, from: focused)
+    private func appKind(bundleIdentifier: String?, focusedElement: AXUIElement?) -> AppKind {
+        if AppEnvironmentClassifier.isStandaloneTerminal(bundleIdentifier: bundleIdentifier) {
+            return .standaloneTerminal
+        }
+
+        if AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundleIdentifier) {
+            return isIntegratedTerminalElement(focusedElement) ? .integratedTerminal : .codeEditor
+        }
+
+        if let bundleIdentifier, browserBundleIdentifiers.contains(bundleIdentifier) {
+            return .browser
+        }
+
+        return .other
+    }
+
+    private func isIntegratedTerminalElement(_ focusedElement: AXUIElement?) -> Bool {
+        guard let focusedElement else { return false }
+
+        return AppEnvironmentClassifier.isIntegratedTerminal(
+            role: stringAttribute(kAXRoleAttribute as CFString, from: focusedElement),
+            title: stringAttribute(kAXTitleAttribute as CFString, from: focusedElement),
+            description: stringAttribute(kAXDescriptionAttribute as CFString, from: focusedElement),
+            identifier: stringAttribute(kAXIdentifierAttribute as CFString, from: focusedElement),
+            value: stringAttribute(kAXValueAttribute as CFString, from: focusedElement))
+    }
+
+    private func isFocusedContextEditable() -> Bool {
+        guard let focusedElement = focusedTextElement() else {
+            return false
+        }
+
+        let role = stringAttribute(kAXRoleAttribute as CFString, from: focusedElement)
+        return isEditableContext(focusedElement, role: role)
+    }
+
+    private func isEditableContext(_ element: AXUIElement, role: String?) -> Bool {
+        if boolAttribute(axEditableAttributeName, from: element) == true {
+            return true
+        }
+
+        return ["AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"].contains(role)
+    }
+
+    // MARK: - Низькорівневі допоміжні методи
+
+    // * -- Копіювання поточної цілі через pasteboard --
+    private func copyTextThroughPasteboard(timeout: TimeInterval = 0.5) -> String? {
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
+        pasteboard.clearContents()
+        let clearChangeCount = pasteboard.changeCount
+
+        guard sendKeyboardShortcut(keyCode: KeyCode.c, flags: .maskCommand) else {
+            snapshot.restore(to: pasteboard)
+            return nil
+        }
+
+        let copied = waitForCopiedString(after: clearChangeCount, timeout: timeout)
+        snapshot.restore(to: pasteboard)
+
+        guard let copied,
+            !copied.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return nil
         }
 
-        let leftString = value as String
-        guard range.location > 0, range.location <= (leftString as NSString).length else {
-            return nil
-        }
-
-        let leftStringCut = (leftString as NSString).substring(to: range.location)
-        guard let wordResult = lastWord(in: leftStringCut) else {
-            return nil
-        }
-
-        let wordLength = (wordResult.word as NSString).length
-        let wordStartIndex =
-            (leftStringCut as NSString).length - wordResult.trailingSpacesCount - wordLength
-
-        return AccessibilitySelection(
-            element: focused, text: wordResult.word,
-            selectedRange: CFRange(location: wordStartIndex, length: wordLength),
-            currentValue: value, trailingSpacesCount: wordResult.trailingSpacesCount)
+        return copied
     }
 
-    // * -- Останнє слово в рядку --
+    private func looksLikeAutomaticLineCopy(_ copiedText: String) -> Bool {
+        let normalized = copiedText.replacingOccurrences(of: "\r\n", with: "\n")
+        return normalized.hasSuffix("\n")
+    }
+
+    // * -- Останнє слово в рядку або значенні --
     private func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
-        // Пропускаємо хвостові пробіли.
         var endIndex = text.endIndex
         while endIndex > text.startIndex {
             let prevIndex = text.index(before: endIndex)
@@ -709,82 +491,6 @@ final class TextIOController {
             word: word,
             trailingSpacesCount: text.distance(from: endIndex, to: text.endIndex)
         )
-    }
-
-    // * -- Виділення слова через Option+Shift+Left --
-    private func selectAndCopyPreviousWordWithWordNavigation(copyTimeout: TimeInterval) -> (
-        word: String, trailingSpacesCount: Int
-    )? {
-        guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: [.maskAlternate, .maskShift])
-        else {
-            return nil
-        }
-        waitForKeyboardSideEffects(timeout: pollStep)
-
-        guard let selectedText = copySelectedTextThroughPasteboard(timeout: copyTimeout) else {
-            _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
-            return nil
-        }
-
-        let word = selectedText.trimmingCharacters(in: .newlines)
-        let wordLength = (word as NSString).length
-        guard wordLength > 0, wordLength <= 40 else {
-            _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
-            return nil
-        }
-
-        return (word: word, trailingSpacesCount: 0)
-    }
-
-    // * -- Виділення попереднього слова через Cmd+Shift+Left (лінійний fallback) --
-    private func selectAndCopyPreviousWordByLineSelection(copyTimeout: TimeInterval) -> (
-        word: String, trailingSpacesCount: Int
-    )? {
-        // 1. Виділяємо текст від курсора до початку рядка.
-        guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: [.maskCommand, .maskShift])
-        else {
-            return nil
-        }
-        waitForKeyboardSideEffects(timeout: pollStep)
-
-        // 2. Копіюємо виділений текст.
-        guard let lineText = copySelectedTextThroughPasteboard(timeout: copyTimeout) else {
-            _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
-            return nil
-        }
-
-        // 3. Знімаємо виділення.
-        guard sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: []) else {
-            return nil
-        }
-        waitForKeyboardSideEffects(timeout: pollStep)
-
-        // 4. Знаходимо останнє слово.
-        let trimmedLine = lineText.trimmingCharacters(in: .newlines)
-        guard let wordResult = lastWord(in: trimmedLine) else {
-            return nil
-        }
-
-        // 5. Переміщуємо курсор ліворуч повз trailing пробіли.
-        for _ in 0..<wordResult.trailingSpacesCount {
-            guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: []) else {
-                return nil
-            }
-        }
-        if wordResult.trailingSpacesCount > 0 {
-            waitForKeyboardSideEffects(timeout: pollStep)
-        }
-
-        // 6. Виділяємо слово: Shift+Left × wordLength.
-        let wordLength = (wordResult.word as NSString).length
-        for _ in 0..<wordLength {
-            guard sendKeyboardShortcut(keyCode: KeyCode.leftArrow, flags: .maskShift) else {
-                return nil
-            }
-        }
-        waitForKeyboardSideEffects(timeout: pollStep)
-
-        return (word: wordResult.word, trailingSpacesCount: wordResult.trailingSpacesCount)
     }
 
     // * -- Фокусований AX елемент --
@@ -822,47 +528,6 @@ final class TextIOController {
         return CFBooleanGetValue(booleanValue)
     }
 
-    // * -- Діапазон виділеного тексту --
-    private func selectedTextRange(from element: AXUIElement) -> CFRange? {
-        var selectedValue: CFTypeRef?
-        let selectedResult = AXUIElementCopyAttributeValue(
-            element, kAXSelectedTextRangeAttribute as CFString, &selectedValue)
-        guard selectedResult == .success,
-            let selectedValue,
-            CFGetTypeID(selectedValue) == AXValueGetTypeID()
-        else {
-            return nil
-        }
-        let axValue = unsafeBitCast(selectedValue, to: AXValue.self)
-        var range = CFRange()
-        guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
-        return range
-    }
-
-    // * -- Встановлення діапазону виділення --
-    private func setSelectedTextRange(_ range: CFRange, for element: AXUIElement) -> Bool {
-        var mutableRange = range
-        guard let value = AXValueCreate(.cfRange, &mutableRange) else { return false }
-        return AXUIElementSetAttributeValue(
-            element, kAXSelectedTextRangeAttribute as CFString, value) == .success
-    }
-
-    // * -- Копіювання виділення через pasteboard --
-    private func copySelectedTextThroughPasteboard(timeout: TimeInterval = 0.5) -> String? {
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
-        let clearChangeCount = pasteboard.changeCount
-
-        guard sendKeyboardShortcut(keyCode: KeyCode.c, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
-            return nil
-        }
-
-        let copied = waitForCopiedString(after: clearChangeCount, timeout: timeout)
-        snapshot.restore(to: pasteboard)
-        return copied
-    }
-
     // * -- Надсилання системного key down/up --
     private func sendKeyboardShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState),
@@ -897,45 +562,6 @@ final class TextIOController {
         }
         return nil
     }
-
-    // * -- Заголовок активного вікна --
-    private func frontmostWindowTitle(processIdentifier: pid_t?) -> String? {
-        guard let processIdentifier else { return nil }
-
-        // 1. CGWindowList — швидко і надійно для Chrome/Safari.
-        let options = CGWindowListOption(
-            arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
-        if let windowListInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as NSArray? {
-            for info in windowListInfo {
-                guard let dict = info as? NSDictionary else { continue }
-                let windowOwnerPID = dict[kCGWindowOwnerPID as String] as? pid_t
-                if windowOwnerPID == processIdentifier {
-                    let layer = dict[kCGWindowLayer as String] as? Int ?? 0
-                    if layer == 0 {
-                        if let name = dict[kCGWindowName as String] as? String, !name.isEmpty {
-                            return name
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. Резервний варіант через Accessibility.
-        let appElement = AXUIElementCreateApplication(processIdentifier)
-        var focusedWindowValue: CFTypeRef?
-        let focusedWindowResult = AXUIElementCopyAttributeValue(
-            appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue)
-
-        guard focusedWindowResult == .success,
-            let focusedWindowValue,
-            CFGetTypeID(focusedWindowValue) == AXUIElementGetTypeID()
-        else {
-            return nil
-        }
-
-        let focusedWindow = unsafeBitCast(focusedWindowValue, to: AXUIElement.self)
-        return stringAttribute(kAXTitleAttribute as CFString, from: focusedWindow)
-    }
 }
 
 // * -- Коди клавіш для симуляції клавіатурних шорткатів --
@@ -944,12 +570,8 @@ private enum KeyCode {
     static let c: CGKeyCode = 8
     static let v: CGKeyCode = 9
     static let w: CGKeyCode = 13
-    static let returnKey: CGKeyCode = 36
     static let delete: CGKeyCode = 51
-    static let escape: CGKeyCode = 53
     static let f2: CGKeyCode = 120
-    static let leftArrow: CGKeyCode = 123
-    static let rightArrow: CGKeyCode = 124
 }
 
 // * -- Знімок pasteboard для відновлення після copy/paste --
