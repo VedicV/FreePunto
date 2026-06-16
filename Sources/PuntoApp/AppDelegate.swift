@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var hotKeys: HotKeyController?
     private var settingsWindowController: SettingsWindowController?
+    // * -- Послідовна черга для тяжкої частини команд (читання/заміна тексту) --
+    private let commandQueue = DispatchQueue(label: "com.freepunto.command")
+    // * -- Захист від перекрытих команд: якщо команда вже виконується, нову ігноруємо --
+    private var isRunningCommand = false
 
     // * -- Запуск застосунку і підключення системних обробників --
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -222,44 +226,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // * -- Загальний сценарій текстової команди --
-    private func performTextCommand(_ command: (String) -> TransformationResult) {
+    // * -- Тяжка частина (читання/заміна тексту) виконується на фоновій черзі commandQueue,
+    // * -- щоб не блокувати головний RunLoop і не вимикати CGEventTap по таймауту. --
+    private func performTextCommand(_ command: @escaping (String) -> TransformationResult) {
+        // (a) Перевірки на головному потоці.
         guard state.settings.isEnabled else {
             return
         }
-
-        // Читаємо виділення або попереднє слово.
-        guard let target = textIO.readTarget() else {
-            NSSound.beep()
+        guard !isRunningCommand else {
             return
         }
+        isRunningCommand = true
 
-        // Виконуємо перетворення і пропускаємо результат без змін.
-        let result = command(target.text)
-        guard result.didChange else {
-            NSSound.beep()
-            return
-        }
+        commandQueue.async { [weak self] in
+            guard let self else { return }
 
-        // Замінюємо поточний вибір через системне введення, якщо текст змінився.
-        if result.originalText != result.replacementText {
-            guard textIO.replace(target, with: result.replacementText) else {
-                Diagnostics.showError(t(.couldNotReplaceText), language: state.settings.interfaceLanguage)
+            // (b) Читаємо виділення або попереднє слово на фоні.
+            let target = self.textIO.readTarget()
+            guard let target else {
+                DispatchQueue.main.async {
+                    NSSound.beep()
+                    self.isRunningCommand = false
+                }
                 return
             }
-        }
 
-        // Синхронізуємо macOS input source з мовою результату після заміни,
-        // щоб перемикання розкладки не скидало активне виділення у браузерах.
-        if let targetLanguage = result.targetLanguage,
-           !inputSources.selectInputSource(for: targetLanguage) {
-            Diagnostics.showError(
-                t(.inputSourceUnavailable),
-                detail: String(format: t(.addInputSourceDetail), targetLanguage.title),
-                language: state.settings.interfaceLanguage
-            )
-        }
+            // (c) Виконуємо перетворення і пропускаємо результат без змін.
+            let result = command(target.text)
+            guard result.didChange else {
+                DispatchQueue.main.async {
+                    NSSound.beep()
+                    self.isRunningCommand = false
+                }
+                return
+            }
 
-        rebuildMenu()
+            // (d) Замінюємо поточний вибір через системне введення, якщо текст змінився.
+            if result.originalText != result.replacementText {
+                let ok = self.textIO.replace(target, with: result.replacementText)
+                guard ok else {
+                    DispatchQueue.main.async {
+                        Diagnostics.showError(self.t(.couldNotReplaceText), language: self.state.settings.interfaceLanguage)
+                        self.isRunningCommand = false
+                    }
+                    return
+                }
+            }
+
+            // (e) Синхронізуємо macOS input source і оновлюємо меню на головному потоці.
+            // Синхронізуємо macOS input source з мовою результату після заміни,
+            // щоб перемикання розкладки не скидало активне виділення у браузерах.
+            DispatchQueue.main.async {
+                if let targetLanguage = result.targetLanguage,
+                   !self.inputSources.selectInputSource(for: targetLanguage) {
+                    Diagnostics.showError(
+                        self.t(.inputSourceUnavailable),
+                        detail: String(format: self.t(.addInputSourceDetail), targetLanguage.title),
+                        language: self.state.settings.interfaceLanguage
+                    )
+                }
+
+                self.rebuildMenu()
+                self.isRunningCommand = false
+            }
+        }
     }
 
     // * -- Команда зміни розкладки --

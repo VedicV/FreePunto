@@ -92,6 +92,11 @@ final class HotKeyController {
             return Unmanaged.passUnretained(event)
         }
 
+        // Ігноруємо власні синтетичні події FreePunto, щоб не ретригерити команди.
+        if event.getIntegerValueField(.eventSourceUserData) == freePuntoSyntheticEventMarker {
+            return Unmanaged.passUnretained(event)
+        }
+
         let settings = settingsProvider()
 
         // Будь-який клік миші скасовує кандидата на одиночне натискання Control.

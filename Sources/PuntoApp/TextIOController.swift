@@ -57,11 +57,12 @@ final class TextIOController {
     private let pollStep: TimeInterval = 0.01
 
     // Прапорець діагностичного логування.
+    // * -- Увімкнено в DEBUG або якщо виставлена змінна середовища FREEPUNTO_TRACE --
     private static let traceEnabled: Bool = {
         #if DEBUG
         return true
         #else
-        return false
+        return ProcessInfo.processInfo.environment["FREEPUNTO_TRACE"] != nil
         #endif
     }()
 
@@ -121,7 +122,7 @@ final class TextIOController {
 
     private func readCodeEditorTarget(_ context: InteractionContext) -> TextTarget? {
         if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
-            if looksLikeAutomaticLineCopy(copiedText) {
+            if TextScanner.looksLikeAutomaticLineCopy(copiedText) {
                 trace("codeEditor: відкинуто автоматичний line-copy")
             } else {
                 trace("codeEditor: читання через Cmd+C")
@@ -142,8 +143,12 @@ final class TextIOController {
         tracePrefix: String
     ) -> TextTarget? {
         if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
-            trace("\(tracePrefix): читання через Cmd+C")
-            return makeCopiedTarget(copiedText, origin: copiedOrigin)
+            if TextScanner.looksLikeAutomaticLineCopy(copiedText) {
+                trace("\(tracePrefix): відкинуто автоматичний line-copy")
+            } else {
+                trace("\(tracePrefix): читання через Cmd+C")
+                return makeCopiedTarget(copiedText, origin: copiedOrigin)
+            }
         }
 
         return readAXLastWord(
@@ -163,10 +168,17 @@ final class TextIOController {
     }
 
     private func readTerminalLastWord(focusedElement: AXUIElement?, origin: ReadOrigin) -> TextTarget? {
-        guard let focusedElement,
-            let value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
-        else {
-            trace("terminal: AXValue недоступний")
+        guard let focusedElement else { return nil }
+
+        var value: String? = nil
+        for _ in 0..<3 {
+            value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
+            if value != nil { break }
+            waitForKeyboardSideEffects(timeout: 0.05)
+        }
+
+        guard let value else {
+            trace("terminal: AXValue недоступний після повторних спроб")
             return nil
         }
 
@@ -175,7 +187,7 @@ final class TextIOController {
             let currentLine = lines.last(where: {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }),
-            let wordResult = lastWord(in: currentLine)
+            let wordResult = TextScanner.lastWord(in: currentLine)
         else {
             trace("terminal: не вдалося знайти останнє слово")
             return nil
@@ -190,9 +202,17 @@ final class TextIOController {
         origin: ReadOrigin,
         tracePrefix: String
     ) -> TextTarget? {
-        guard let focusedElement,
-            let value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement),
-            let wordResult = lastWord(in: value)
+        guard let focusedElement else { return nil }
+
+        var value: String? = nil
+        for _ in 0..<3 {
+            value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
+            if value != nil { break }
+            waitForKeyboardSideEffects(timeout: 0.05)
+        }
+
+        guard let value,
+            let wordResult = TextScanner.lastWord(in: value)
         else {
             trace("\(tracePrefix): AXValue не дав останнє слово")
             return nil
@@ -217,7 +237,7 @@ final class TextIOController {
         TextTarget(
             text: wordResult.word,
             trailingSpacesCount: wordResult.trailingSpacesCount,
-            wordLength: (wordResult.word as NSString).length,
+            wordLength: wordResult.word.count,
             origin: origin)
     }
 
@@ -260,9 +280,7 @@ final class TextIOController {
                 snapshot.restore(to: pasteboard)
                 return false
             }
-        }
-        if totalDeleteLength > 0 {
-            waitForKeyboardSideEffects(timeout: 0.05)
+            waitForKeyboardSideEffects(timeout: pollStep)
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
@@ -303,6 +321,11 @@ final class TextIOController {
     }
 
     private func replaceBrowserGridLike(with replacement: String) -> Bool {
+        // * -- Знімок ролі до F2, щоб визначити зміну фокусу після входу в edit mode --
+        let previousRole: String? = focusedTextElement().flatMap {
+            stringAttribute(kAXRoleAttribute as CFString, from: $0)
+        }
+
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
@@ -315,10 +338,9 @@ final class TextIOController {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.35)
 
-        guard isFocusedContextEditable() else {
-            trace("browserGrid: F2 не перевів фокус у edit mode")
+        guard waitForGridEditMode(previousRole: previousRole, timeout: 0.6) else {
+            trace("browserGrid: F2 не дав жодного edit-mode сигналу — paste скасовано")
             snapshot.restore(to: pasteboard)
             return false
         }
@@ -413,13 +435,32 @@ final class TextIOController {
             value: stringAttribute(kAXValueAttribute as CFString, from: focusedElement))
     }
 
-    private func isFocusedContextEditable() -> Bool {
-        guard let focusedElement = focusedTextElement() else {
-            return false
-        }
-
-        let role = stringAttribute(kAXRoleAttribute as CFString, from: focusedElement)
-        return isEditableContext(focusedElement, role: role)
+    // * -- Чекаємо, поки F2 переведе активну комірку в режим редагування.
+    // * -- Canvas-таблиці не завжди виставляють AXEditable, тому приймаємо кілька сигналів. --
+    private func waitForGridEditMode(previousRole: String?, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let element = focusedTextElement() {
+                let role = stringAttribute(kAXRoleAttribute as CFString, from: element)
+                // Сигнал 1: контекст став явно редагованим.
+                if isEditableContext(element, role: role) {
+                    trace("browserGrid: edit mode сигнал=editable role=\(role ?? "nil")")
+                    return true
+                }
+                // Сигнал 2: роль фокуса змінилася після F2 (фокус перейшов у редактор комірки).
+                if role != previousRole {
+                    trace("browserGrid: edit mode сигнал=roleChanged \(previousRole ?? "nil")->\(role ?? "nil")")
+                    return true
+                }
+                // Сигнал 3: фокус віддає AXSelectedText (текстовий редактор комірки активний).
+                if stringAttribute(kAXSelectedTextAttribute as CFString, from: element) != nil {
+                    trace("browserGrid: edit mode сигнал=selectedTextReadable role=\(role ?? "nil")")
+                    return true
+                }
+            }
+            waitForKeyboardSideEffects(timeout: pollStep)
+        } while Date() < deadline
+        return false
     }
 
     private func isEditableContext(_ element: AXUIElement, role: String?) -> Bool {
@@ -453,44 +494,6 @@ final class TextIOController {
         }
 
         return copied
-    }
-
-    private func looksLikeAutomaticLineCopy(_ copiedText: String) -> Bool {
-        let normalized = copiedText.replacingOccurrences(of: "\r\n", with: "\n")
-        return normalized.hasSuffix("\n")
-    }
-
-    // * -- Останнє слово в рядку або значенні --
-    private func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
-        var endIndex = text.endIndex
-        while endIndex > text.startIndex {
-            let prevIndex = text.index(before: endIndex)
-            if text[prevIndex].isWhitespace || text[prevIndex].isNewline {
-                endIndex = prevIndex
-            } else {
-                break
-            }
-        }
-
-        let wordText = text[..<endIndex]
-        let word: String
-        if let lastWhitespaceRange = wordText.rangeOfCharacter(
-            from: .whitespacesAndNewlines, options: .backwards)
-        {
-            word = String(wordText.suffix(from: lastWhitespaceRange.upperBound))
-        } else {
-            word = String(wordText)
-        }
-
-        let wordLength = (word as NSString).length
-        guard wordLength > 0, wordLength <= 40 else {
-            return nil
-        }
-
-        return (
-            word: word,
-            trailingSpacesCount: text.distance(from: endIndex, to: text.endIndex)
-        )
     }
 
     // * -- Фокусований AX елемент --
@@ -538,15 +541,18 @@ final class TextIOController {
         }
 
         keyDown.flags = flags
-        keyDown.post(tap: .cghidEventTap)
+        keyDown.setIntegerValueField(.eventSourceUserData, value: freePuntoSyntheticEventMarker)
         keyUp.flags = flags
+        keyUp.setIntegerValueField(.eventSourceUserData, value: freePuntoSyntheticEventMarker)
+        keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
         return true
     }
 
     // * -- Очікування обробки клавіатурної команди --
+    // * -- Thread.sleep не блокує RunLoop головного потоку, тому CGEventTap не вимикається по таймауту --
     private func waitForKeyboardSideEffects(timeout: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(timeout))
+        Thread.sleep(forTimeInterval: timeout)
     }
 
     // * -- Очікування оновлення pasteboard --
@@ -563,6 +569,9 @@ final class TextIOController {
         return nil
     }
 }
+
+// * -- Маркер власних синтетичних подій, щоб HotKeyController їх ігнорував --
+let freePuntoSyntheticEventMarker: Int64 = 0x4652_5045
 
 // * -- Коди клавіш для симуляції клавіатурних шорткатів --
 private enum KeyCode {
