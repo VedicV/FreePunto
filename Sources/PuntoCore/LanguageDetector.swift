@@ -2,6 +2,7 @@ import Foundation
 
 // * -- Просте визначення мови фрагмента --
 public enum LanguageDetector {
+    
     // * -- Вибір домінантної писемності --
     public static func detect(_ text: String, fallback: PuntoLanguage = .english) -> PuntoLanguage {
         var latin = 0
@@ -43,18 +44,22 @@ public enum LanguageDetector {
         text.unicodeScalars.contains(where: isCyrillic)
     }
 
+    // Перевірка, чи належить символ до латиниці.
     private static func isLatin(_ scalar: UnicodeScalar) -> Bool {
         (65...90).contains(Int(scalar.value)) || (97...122).contains(Int(scalar.value))
     }
 
+    // Перевірка, чи належить символ до кирилиці.
     private static func isCyrillic(_ scalar: UnicodeScalar) -> Bool {
         (0x0400...0x052F).contains(Int(scalar.value))
     }
 
+    // Перевірка на наявність літер, характерних тільки для української мови.
     private static func isUkrainianSpecific(_ scalar: UnicodeScalar) -> Bool {
         "іїєґІЇЄҐ".unicodeScalars.contains(scalar)
     }
 
+    // Перевірка на наявність літер, характерних тільки для російської мови.
     private static func isRussianSpecific(_ scalar: UnicodeScalar) -> Bool {
         "ёъыэЁЪЫЭ".unicodeScalars.contains(scalar)
     }

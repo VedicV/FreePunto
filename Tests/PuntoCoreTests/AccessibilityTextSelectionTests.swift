@@ -2,6 +2,7 @@ import XCTest
 
 @testable import PuntoCore
 
+// Тестуємо логіку вибору тексту для перетворення, особливо для випадків, коли роль елемента Accessibility може вказувати на те, що це клітинка в таблиці або канвас, де значення може бути більш релевантним для трансформації, ніж виділений текст. Це важливо для забезпечення коректного вибору тексту в різних контекстах застосунків, таких як електронні таблиці або спеціалізовані редактори.
 final class AccessibilityTextSelectionTests: XCTestCase {
     func testCellValueIsPreferredForCanvasLikeCells() {
         XCTAssertEqual(

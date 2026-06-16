@@ -16,6 +16,7 @@ struct TextTarget {
     }
 }
 
+// * -- Контролер для читання тексту з активного застосунку і заміни його на результат трансформації --
 private struct AccessibilitySelection {
     let element: AXUIElement
     let text: String
@@ -73,13 +74,6 @@ final class TextIOController {
     private let pasteboard = NSPasteboard.general
     private let commandTimeout: TimeInterval = 0.5
     private let pollStep: TimeInterval = 0.01
-
-    private static let vscodeBundleIdentifiers: Set<String> = [
-        "com.microsoft.VSCode",
-        "com.microsoft.VSCodeInsiders",
-        "com.microsoft.VSCodeExploration",
-        "com.vscodium",
-    ]
 
     private static let terminalBundleIdentifiers: Set<String> = [
         "com.apple.Terminal",
@@ -334,6 +328,7 @@ final class TextIOController {
         return .replacedUnverified
     }
 
+// Верифікація заміни через Accessibility, порівнюючи очікуване значення з поточним.
     private func verifyAccessibilityReplacement(
         _ selection: AccessibilitySelection,
         replacement: String
@@ -383,6 +378,7 @@ final class TextIOController {
             return false
         }
 
+// Якщо потрібно, видаляємо слово перед курсором через клавіатурний шорткат Control+W.
         if deletePreviousWordBeforePaste,
             !sendKeyboardShortcut(keyCode: KeyCode.w, flags: .maskControl)
         {
@@ -390,8 +386,8 @@ final class TextIOController {
             return false
         }
 
+    // Для терміналу потрібно більше часу на обробку Control+W.
         if deletePreviousWordBeforePaste {
-            // Для терміналу потрібно більше часу на обробку Control+W.
             waitForKeyboardSideEffects(timeout: 0.05)
         }
 
@@ -406,6 +402,7 @@ final class TextIOController {
             waitForKeyboardSideEffects(timeout: pollStep)
         }
 
+    // Відправляємо Cmd+V для вставки заміни.
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
@@ -454,6 +451,7 @@ final class TextIOController {
         )
     }
 
+// Читаємо текст комірки Google Sheets через Accessibility, бо в canvas/grid режимі там немає нормального selection і Cmd+C може повернути цілий рядок.
     private func readGoogleSheetsCellText(from focusedElement: AXUIElement?) -> String? {
         guard let focusedElement else {
             return nil
@@ -470,6 +468,7 @@ final class TextIOController {
         )
     }
 
+// Для заміни в Google Sheets потрібно активувати режим редагування комірки, потім видалити її вміст і вставити нове значення через буфер обміну, бо пряме встановлення тексту через Accessibility не працює.
     private func replaceGoogleSheetsCellThroughEditMode(
         with replacement: String,
         settleTimeout: TimeInterval
@@ -477,28 +476,30 @@ final class TextIOController {
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
 
+// Встановлюємо нове значення в буфер обміну для вставки.
         guard pasteboard.setString(replacement, forType: .string) else {
             snapshot.restore(to: pasteboard)
             return false
         }
-
+// Активуємо режим редагування комірки, потім видаляємо її вміст і вставляємо нове значення через буфер обміну.
         guard activateGoogleSheetsCellEditMode() else {
             snapshot.restore(to: pasteboard)
             return false
         }
-
+// Видаляємо вміст комірки через Cmd+A і Delete, потім вставляємо нове значення через Cmd+V.
         guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.08)
-
+// Навіть якщо комірка була порожньою, Google Sheets може не вставити нове значення через буфер обміну без цього кроку.
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
         }
         waitForKeyboardSideEffects(timeout: settleTimeout)
 
+// Іноді після Cmd+V Google Sheets не вставляє текст, якщо комірка була порожньою, тому додатково відправляємо Cmd+A для виділення всього тексту в комірці, що має спровокувати оновлення вмісту.
         guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
             return false
@@ -509,6 +510,7 @@ final class TextIOController {
         return true
     }
 
+// В Google Sheets для активації режиму редагування комірки потрібно відправити Return, але якщо комірка вже в режимі редагування, Return може створити новий ряд замість активації. Тому спочатку відправляємо Escape для виходу з будь-якого режиму, потім Return для входу в режим редагування.
     private func activateGoogleSheetsCellEditMode() -> Bool {
         // Після Cmd+C Google Sheets лишає grid у copy-mode; Escape прибирає copy range.
         _ = sendKeyboardShortcut(keyCode: KeyCode.escape, flags: [])
@@ -552,6 +554,7 @@ final class TextIOController {
         )
     }
 
+// Отримуємо діапазон виділеного тексту через Accessibility. Якщо виділення немає, але є текст у буфері обміну, і цей
     private func readTerminalPreviousWordWithAccessibility(focused: AXUIElement?) -> (
         word: String, trailingSpacesCount: Int
     )? {
@@ -602,6 +605,7 @@ final class TextIOController {
         )
     }
 
+// Допоміжний метод для отримання останнього слова з рядка, а також кількості пробілів після нього для коректного позиціювання курсора після заміни.
     private func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
         // Пропускаємо хвостові пробіли.
         var endIndex = text.endIndex
@@ -685,6 +689,7 @@ final class TextIOController {
         return selectAndCopyPreviousWordByLineSelection(copyTimeout: copyTimeout)
     }
 
+// Для VS Code без доступу Accessibility можна довіряти тексту в буфері обміну, якщо він не закінчується на новий ряд, бо VS Code копіює весь ряд при відсутності виділення.
     private func shouldTrustPasteboardSelectionWithoutAccessibility(
         _ text: String,
         context: TextInteractionContext
@@ -797,6 +802,7 @@ final class TextIOController {
         return (word: word, trailingSpacesCount: trailingSpacesCount)
     }
 
+// Визначаємо контекст взаємодії з текстом у залежності від доступності Accessibility, активного застосунку та його фокусу.
     private func resolveInteractionContext(hasAccessibility: Bool) -> TextInteractionContext {
         let frontmostApplication = NSWorkspace.shared.frontmostApplication
         let focusedElement = hasAccessibility ? focusedTextElement() : nil
@@ -807,6 +813,7 @@ final class TextIOController {
 
         let profile = interactionProfile(
             bundleIdentifier: frontmostApplication?.bundleIdentifier,
+            focusedElement: focusedElement,
             windowTitle: windowTitle
         )
 
@@ -888,6 +895,7 @@ final class TextIOController {
         }
     }
 
+// Налаштування для браузерів у випадку, якщо фокус знаходиться в редагованому текстовому полі. У цьому випадку можна довіряти Accessibility для читання виділення і заміни тексту, бо більшість браузерів коректно підтримують ці операції в текстових полях, на відміну від веб-редакторів.
     private func browserEditingContext(focusedElement: AXUIElement?) -> TextInteractionContext {
         TextInteractionContext(
             profile: .browser,
@@ -907,6 +915,7 @@ final class TextIOController {
         )
     }
 
+// Для читання виділення в редакторах (особливо веб-редакторах) потрібно переконатися, що фокус знаходиться в редагованому текстовому полі, інакше Accessibility може повернути некоректне виділення або його відсутність. Якщо ж редактор не потребує цього для коректного читання виділення, можна пропустити цю перевірку для кращої підтримки нестандартних елементів.
     private func shouldReadSelectionText(
         from focusedElement: AXUIElement?,
         context: TextInteractionContext
@@ -927,6 +936,7 @@ final class TextIOController {
         return editable
     }
 
+// Для веб-редакторів (Google Sheets, онлайн IDE) і браузерів потрібно визначити, чи є фокус в редагованому текстовому полі, щоб зрозуміти, чи можна довіряти Accessibility для читання виділення і заміни тексту. Якщо це так, то можна використовувати більш надійні операції через Accessibility, якщо ні - покладатися на буфер обміну і клавіатурні шорткати.
     private func isEditableTextElement(_ element: AXUIElement?) -> Bool {
         guard let element else {
             return false
@@ -949,9 +959,12 @@ final class TextIOController {
         return ["AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"].contains(role)
     }
 
-    private func interactionProfile(bundleIdentifier: String?, windowTitle: String?)
-        -> TextInteractionProfile
-    {
+// Визначаємо профіль взаємодії з текстом залежно від активного застосунку та його фокусу.
+    private func interactionProfile(
+        bundleIdentifier: String?,
+        focusedElement: AXUIElement?,
+        windowTitle: String?
+    ) -> TextInteractionProfile {
         guard let bundleIdentifier else {
             return .standard
         }
@@ -960,7 +973,13 @@ final class TextIOController {
             return .terminal
         }
 
-        if Self.vscodeBundleIdentifiers.contains(bundleIdentifier) {
+        if AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundleIdentifier),
+            isIntegratedTerminalElement(focusedElement, windowTitle: windowTitle)
+        {
+            return .terminal
+        }
+
+        if AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundleIdentifier) {
             return .vscode
         }
 
@@ -974,6 +993,36 @@ final class TextIOController {
         return .standard
     }
 
+// Для інтегрованих терміналів (наприклад, термінал у VS Code) потрібно використовувати спеціальний профіль взаємодії з текстом, навіть якщо Accessibility повертає фокус на рівні вікна або застосунку, бо це може бути єдиним способом коректно визначити контекст для читання слова перед курсором і його заміни.
+    private func isIntegratedTerminalElement(
+        _ focusedElement: AXUIElement?,
+        windowTitle: String?
+    ) -> Bool {
+        let effectiveWindowTitle = windowTitle
+            ?? frontmostWindowTitle(processIdentifier: NSWorkspace.shared.frontmostApplication?.processIdentifier)
+
+        guard let focusedElement else {
+            return AppEnvironmentClassifier.isIntegratedTerminal(
+                role: nil,
+                title: nil,
+                description: nil,
+                identifier: nil,
+                windowTitle: effectiveWindowTitle,
+                value: nil
+            )
+        }
+
+        return AppEnvironmentClassifier.isIntegratedTerminal(
+            role: stringAttribute(kAXRoleAttribute as CFString, from: focusedElement),
+            title: stringAttribute(kAXTitleAttribute as CFString, from: focusedElement),
+            description: stringAttribute(kAXDescriptionAttribute as CFString, from: focusedElement),
+            identifier: stringAttribute(kAXIdentifierAttribute as CFString, from: focusedElement),
+            windowTitle: effectiveWindowTitle,
+            value: stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
+        )
+    }
+
+// Для Google Sheets у canvas/grid режимі потрібно визначити, чи є активне вікно Google Sheets, щоб використовувати спеціальні стратегії читання і заміни тексту в комірках, бо там немає нормального текстового selection і пряме встановлення тексту через Accessibility не працює.
     private func isGoogleSheetsWindow(windowTitle: String?) -> Bool {
         guard let loweredTitle = windowTitle?.lowercased() else {
             return false
@@ -982,6 +1031,7 @@ final class TextIOController {
         return Self.googleSheetsTitleHints.contains(where: { loweredTitle.contains($0) })
     }
 
+//  Отримуємо заголовок активного вікна для визначення контексту взаємодії з текстом, особливо для браузерів і веб-редакторів, де заголовок може містити підказки про те, чи є активним Google Sheets або інший специфічний редактор. Спочатку пробуємо отримати заголовок через CGWindowList, що швидко і надійно працює для більшості застосунків, а якщо це не вдається, використовуємо Accessibility як резервний варіант.
     private func frontmostWindowTitle(processIdentifier: pid_t?) -> String? {
         guard let processIdentifier else {
             return nil
@@ -1024,6 +1074,7 @@ final class TextIOController {
         return stringAttribute(kAXTitleAttribute as CFString, from: focusedWindow)
     }
 
+// Отримуємо фокусований елемент через Accessibility для читання виділення і заміни тексту, якщо це можливо. Якщо Accessibility недоступна або не повертає коректний елемент, повертаємо nil, щоб використовувати альтернативні стратегії через буфер обміну і клавіатурні шорткати.
     private func focusedTextElement() -> AXUIElement? {
         let systemWide = AXUIElementCreateSystemWide()
         var focusedValue: CFTypeRef?
@@ -1043,6 +1094,7 @@ final class TextIOController {
         return unsafeBitCast(focusedValue, to: AXUIElement.self)
     }
 
+// Допоміжні методи для читання атрибутів Accessibility з коректною обробкою типів і помилок.
     private func stringAttribute(_ attribute: CFString, from element: AXUIElement) -> String? {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, attribute, &value)
@@ -1053,6 +1105,7 @@ final class TextIOController {
         return value as? String
     }
 
+// Для булевих атрибутів потрібно перевірити тип і коректно обробити значення, бо деякі атрибути можуть бути представлені як CFBoolean, а не як прості Bool.
     private func boolAttribute(_ attribute: CFString, from element: AXUIElement) -> Bool? {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, attribute, &value)
@@ -1070,6 +1123,7 @@ final class TextIOController {
         return CFBooleanGetValue(booleanValue)
     }
 
+// Для читання діапазону виділеного тексту потрібно отримати атрибут kAXSelectedTextRange, перевірити його тип і конвертувати в CFRange для подальшого використання при читанні тексту або встановленні нового виділення.
     private func selectedTextRange(from element: AXUIElement) -> CFRange? {
         var selectedValue: CFTypeRef?
         let selectedResult = AXUIElementCopyAttributeValue(
@@ -1093,6 +1147,7 @@ final class TextIOController {
         return range
     }
 
+// Для встановлення діапазону виділеного тексту потрібно конвертувати CFRange в AXValue і встановити атрибут kAXSelectedTextRange через Accessibility, що дозволить змінити виділення тексту для читання або заміни.
     private func setSelectedTextRange(_ range: CFRange, for element: AXUIElement) -> Bool {
         var mutableRange = range
         guard let value = AXValueCreate(.cfRange, &mutableRange) else {
@@ -1159,6 +1214,7 @@ final class TextIOController {
     }
 }
 
+// Коди клавіш для симуляції клавіатурних шорткатів.
 private enum KeyCode {
     static let a: CGKeyCode = 0
     static let c: CGKeyCode = 8
@@ -1191,6 +1247,7 @@ private struct PasteboardSnapshot {
         return PasteboardSnapshot(items: items)
     }
 
+// Відновлюємо всі типи даних у pasteboard, щоб не порушувати інші застосунки, які можуть покладатися на нестандартні типи даних у буфері обміну.
     func restore(to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
         let restoredItems = items.map { itemData -> NSPasteboardItem in

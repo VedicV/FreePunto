@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rebuildMenu()
 
+        // Перевіряємо, чи є довіра до доступності, інакше запитуємо її.
         if Diagnostics.accessibilityTrusted(prompt: false) {
             hotKeys?.start()
         } else {
@@ -108,14 +109,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return state.settings.switchingMode == .fixedTarget ? "FreePunto: \(hint)*" : "FreePunto: \(hint)"
     }
 
+// * -- Допоміжні методи для створення меню і обробки команд --
+
+// Метод для отримання локалізованого рядка з ключа.
     private func t(_ key: AppText.Key) -> String {
         AppText.get(key, state.settings.interfaceLanguage)
     }
 
+// Формування заголовка команди з урахуванням гарячої клавіші.
     private func commandTitle(_ key: AppText.Key, hotKey: HotKey) -> String {
         "\(t(key)) (\(hotKey.displayTitle))"
     }
 
+// Універсальний метод для створення пункту меню з заданою дією.
     private func makeItem(title: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
@@ -182,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    // Меню вибору мови інтерфейсу.
     private func interfaceLanguageMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: t(.interfaceLanguage), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -196,6 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+// * -- Пункт меню з версією і часом збірки --
     private func versionAndBuildMenuItem() -> NSMenuItem {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         let buildTimeStr: String
@@ -259,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         performLayoutConversion()
     }
 
+// * -- Загальний сценарій текстової команди --
     private func performLayoutConversion() {
         performTextCommand { [state] text in
             state.engine.convertLayout(text, settings: state.settings)
@@ -281,12 +290,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         performTransliteration()
     }
 
+// * -- Команда транслітерації --
+     // Використовуємо налаштування цілі транслітерації для визначення мови результату.
     private func performTransliteration() {
         performTextCommand { [state] text in
             state.engine.transliterate(text, targetLanguage: state.settings.transliterationTargetLanguage)
         }
     }
 
+    // * -- Перемикання увімкнення --
     @objc private func toggleEnabled() {
         state.toggleEnabled()
     }
@@ -329,6 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.settings.caseMode = mode
     }
 
+// * -- Налаштування мови інтерфейсу --
     @objc private func setInterfaceLanguage(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let language = InterfaceLanguage(rawValue: rawValue) else {
@@ -360,10 +373,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+// * -- Відкриття вікна дозволів --
     @objc private func openPermissions() {
         Diagnostics.showPermissionsWindow(language: state.settings.interfaceLanguage)
     }
 
+// * -- Вихід із застосунку --
     @objc private func quit() {
         NSApp.terminate(nil)
     }

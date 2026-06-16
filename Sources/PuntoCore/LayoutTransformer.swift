@@ -63,6 +63,7 @@ public enum LayoutTransformer {
         return preserveLetterCase(from: original, replacement: replacement)
     }
 
+    // Повернення базової англійської клавіші для символу вхідної мови.
     private static func englishKey(for lowerCharacter: String, source: PuntoLanguage) -> String? {
         switch source {
         case .english:
@@ -74,6 +75,7 @@ public enum LayoutTransformer {
         }
     }
 
+    // Повернення символу в цільовій мові за відповідною англійською клавішею.
     private static func replacement(for englishKey: String, target: PuntoLanguage) -> String? {
         switch target {
         case .english:

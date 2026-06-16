@@ -33,6 +33,7 @@ enum StatusIconFactory {
         case pause
     }
 
+// Малюємо іконку клавіші з символом Control зліва і текстом або паузою праворуч.
     private static func keyIcon(topRight: TopRight, fixedMode: Bool) -> NSImage {
 
         // РОЗМІР ПОЛОТНА ІКОНКИ: ширина 23 (менша ширина - менші відступи до сусідів), висота 18.

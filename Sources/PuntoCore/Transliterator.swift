@@ -126,6 +126,7 @@ public enum Transliterator {
         return detected == .english ? normalizedFallback : detected
     }
 
+    // Перевірка, чи містить текст хоча б один символ із заданого набору.
     private static func containsAny(_ text: String, from characters: String) -> Bool {
         let charset = Set(characters.unicodeScalars)
         return text.unicodeScalars.contains(where: { charset.contains($0) })

@@ -37,6 +37,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         sleeves = []
         window?.title = t(.settingsTitle)
 
+        // Створюємо стек для розміщення елементів налаштувань.
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -53,6 +54,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         stack.addArrangedSubview(makeLaunchAtLoginCheckbox())
 
+        // Налаштування режимів роботи.
         stack.addArrangedSubview(makePopupRow(
             title: t(.switchingMode),
             values: SwitchingMode.allCases,
@@ -66,6 +68,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
         ))
 
+        // Налаштування фіксованої цільової мови.
         stack.addArrangedSubview(makePopupRow(
             title: t(.fixedTarget),
             values: [.russian, .ukrainian],
@@ -77,6 +80,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
         ))
 
+    // Налаштування мови для транслітерації.
         stack.addArrangedSubview(makePopupRow(
             title: t(.transliterationTarget),
             values: [.russian, .ukrainian],
@@ -86,7 +90,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 self?.state.settings.transliterationTargetLanguage = language
             }
         ))
-
+    // Налаштування режиму зміни регістру.
         stack.addArrangedSubview(makePopupRow(
             title: t(.caseMode),
             values: CaseMode.allCases,
@@ -97,6 +101,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             action: { [weak self] mode in self?.state.settings.caseMode = mode }
         ))
 
+    // Налаштування мови інтерфейсу застосунку.
         stack.addArrangedSubview(makePopupRow(
             title: t(.interfaceLanguage),
             values: InterfaceLanguage.allCases,
@@ -109,6 +114,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ))
 
         stack.addArrangedSubview(separator())
+       
         // Налаштування гарячих клавіш.
         stack.addArrangedSubview(makeMainHotKeyRow())
         stack.addArrangedSubview(makeHotKeyRow(
@@ -127,6 +133,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             update: { [weak self] hotKey in self?.state.settings.pauseHotKey = hotKey }
         ))
 
+    // Налаштування доступів macOS.
         stack.addArrangedSubview(separator())
         // Доступи macOS.
         let permissions = NSButton(title: t(.openPermissions), target: self, action: #selector(openPermissions))
@@ -310,6 +317,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
+// Допоміжні методи для створення елементів інтерфейсу.
     private func label(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.widthAnchor.constraint(equalToConstant: 210).isActive = true
@@ -328,6 +336,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
+// * -- Допоміжний клас-контейнер для передачі об'єктів у представлені значення NSPopUpButton --
 private final class Box<Value> {
     let value: Value
 
@@ -336,6 +345,7 @@ private final class Box<Value> {
     }
 }
 
+// * -- Спеціальний sleeve-клас для утримання closure-обробників подій AppKit контролерів --
 private final class ClosureSleeve: NSObject {
     private let closure: () -> Void
 
@@ -348,6 +358,7 @@ private final class ClosureSleeve: NSObject {
     }
 }
 
+// * -- Допоміжне розширення для перенесення модифікаторів із системного NSEvent --
 private extension HotKeyModifiers {
     init(modifierFlags: NSEvent.ModifierFlags) {
         var modifiers: HotKeyModifiers = []

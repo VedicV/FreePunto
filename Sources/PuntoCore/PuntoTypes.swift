@@ -1,10 +1,12 @@
 import Foundation
 
+// * -- Перелік підтримуваних мов та їхнього відображення --
 public enum PuntoLanguage: String, CaseIterable, Codable, Sendable, Equatable {
     case english = "en"
     case russian = "ru"
     case ukrainian = "ua"
 
+    // * -- Повна назва мови --
     public var title: String {
         switch self {
         case .english: "English"
@@ -13,6 +15,7 @@ public enum PuntoLanguage: String, CaseIterable, Codable, Sendable, Equatable {
         }
     }
 
+    // * -- Скорочена назва для статус-бару (2 символи) --
     public var statusTitle: String {
         switch self {
         case .english: "EN"
@@ -21,6 +24,7 @@ public enum PuntoLanguage: String, CaseIterable, Codable, Sendable, Equatable {
         }
     }
 
+    // * -- Системний код мови розкладки macOS --
     public var inputSourceLanguageCode: String {
         switch self {
         case .english: "en"
@@ -30,10 +34,12 @@ public enum PuntoLanguage: String, CaseIterable, Codable, Sendable, Equatable {
     }
 }
 
+// * -- Режими перемикання розкладки клавіатури --
 public enum SwitchingMode: String, CaseIterable, Codable, Sendable, Equatable {
-    case sequential
-    case fixedTarget
+    case sequential   // Перемикання по черзі між усіма активними мовами (по колу)
+    case fixedTarget  // Перемикання між англійською та однією обраною фіксованою мовою
 
+    // * -- Текстова назва режиму --
     public var title: String {
         switch self {
         case .sequential: "Sequential"
@@ -42,12 +48,14 @@ public enum SwitchingMode: String, CaseIterable, Codable, Sendable, Equatable {
     }
 }
 
+// * -- Режими автоматичної зміни регістру тексту --
 public enum CaseMode: String, CaseIterable, Codable, Sendable, Equatable {
-    case lower
-    case sentence
-    case title
-    case normalizeCapsLock
+    case lower              // Нижній регістр (маленькі літери)
+    case sentence           // Перша літера речення велика
+    case title              // Перша літера кожного слова велика
+    case normalizeCapsLock  // Інвертування регістру (виправлення Caps Lock)
 
+    // * -- Текстова назва режиму зміни регістру --
     public var title: String {
         switch self {
         case .lower: "Lowercase"
@@ -58,11 +66,13 @@ public enum CaseMode: String, CaseIterable, Codable, Sendable, Equatable {
     }
 }
 
+// * -- Мова інтерфейсу застосунку --
 public enum InterfaceLanguage: String, CaseIterable, Codable, Sendable, Equatable {
     case russian
     case ukrainian
     case english
 
+    // * -- Визначення мови системи за замовчуванням --
     public static var systemDefault: InterfaceLanguage {
         let preferredLanguage = Locale.preferredLanguages.first?.lowercased() ?? ""
         if preferredLanguage.hasPrefix("uk") {
@@ -77,6 +87,7 @@ public enum InterfaceLanguage: String, CaseIterable, Codable, Sendable, Equatabl
         return .ukrainian
     }
 
+    // * -- Локалізована назва мови для меню вибору --
     public var title: String {
         switch self {
         case .russian: "Русский"
@@ -86,12 +97,14 @@ public enum InterfaceLanguage: String, CaseIterable, Codable, Sendable, Equatabl
     }
 }
 
+// * -- Команди перетворення тексту --
 public enum PuntoCommand: String, Codable, Sendable, Equatable {
-    case layout
-    case letterCase
-    case transliteration
+    case layout          // Зміна розкладки клавіатури
+    case letterCase      // Зміна регістру літер
+    case transliteration // Транслітерація символів
 }
 
+// * -- Модифікатори гарячих клавіш (OptionSet) --
 public struct HotKeyModifiers: OptionSet, Codable, Sendable, Equatable {
     public let rawValue: Int
 
@@ -100,42 +113,49 @@ public struct HotKeyModifiers: OptionSet, Codable, Sendable, Equatable {
     public static let shift = HotKeyModifiers(rawValue: 1 << 2)
     public static let command = HotKeyModifiers(rawValue: 1 << 3)
 
+    // * -- Ініціалізація через бітову маску --
     public init(rawValue: Int) {
         self.rawValue = rawValue
     }
 
+    // * -- Декодування з JSON --
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         self.init(rawValue: try container.decode(Int.self))
     }
 
+    // * -- Кодування в JSON --
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
 }
 
+// * -- Модель гарячої клавіші або комбінації клавіш --
 public struct HotKey: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable {
-        case singleControl
-        case keyCombination
+        case singleControl   // Подвійне натискання клавіші Control (або одиночне)
+        case keyCombination  // Класична комбінація модифікаторів та звичайної клавіші
     }
 
     public var kind: Kind
     public var keyCode: Int?
     public var modifiers: HotKeyModifiers
 
+    // * -- Ініціалізатор комбінації --
     public init(kind: Kind, keyCode: Int? = nil, modifiers: HotKeyModifiers = []) {
         self.kind = kind
         self.keyCode = keyCode
         self.modifiers = modifiers
     }
 
+    // Зручні фабричні методи для створення гарячих клавіш
     public static let singleControl = HotKey(kind: .singleControl)
     public static func combination(keyCode: Int, modifiers: HotKeyModifiers) -> HotKey {
         HotKey(kind: .keyCombination, keyCode: keyCode, modifiers: modifiers)
     }
 
+    // * -- Рядок для відображення комбінації в інтерфейсі (наприклад, 'Option+Shift+A') --
     public var displayTitle: String {
         switch kind {
         case .singleControl:
@@ -153,6 +173,7 @@ public struct HotKey: Codable, Sendable, Equatable {
         }
     }
 
+    // Мапа кодів клавіш для їхнього текстового відображення
     private static func keyName(for keyCode: Int) -> String {
         let names = [
             0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
@@ -164,20 +185,22 @@ public struct HotKey: Codable, Sendable, Equatable {
     }
 }
 
+// * -- Усі налаштування застосунку Punto --
 public struct PuntoSettings: Codable, Sendable, Equatable {
-    public var schemaVersion: Int
-    public var isEnabled: Bool
-    public var launchAtLogin: Bool
-    public var mainHotKey: HotKey
-    public var caseHotKey: HotKey
-    public var transliterationHotKey: HotKey
-    public var pauseHotKey: HotKey
-    public var switchingMode: SwitchingMode
-    public var fixedTargetLanguage: PuntoLanguage
-    public var transliterationTargetLanguage: PuntoLanguage
-    public var caseMode: CaseMode
-    public var interfaceLanguage: InterfaceLanguage
+    public var schemaVersion: Int                   // Версія структури збережених налаштувань
+    public var isEnabled: Bool                      // Прапорець активності Punto (увімкнено/вимкнено)
+    public var launchAtLogin: Bool                  // Чи запускати застосунок автоматично при старті системи
+    public var mainHotKey: HotKey                   // Гаряча клавіша для зміни розкладки останнього слова/виділення
+    public var caseHotKey: HotKey                   // Гаряча клавіша для зміни регістру літер
+    public var transliterationHotKey: HotKey         // Гаряча клавіша для транслітерації
+    public var pauseHotKey: HotKey                  // Гаряча клавіша для паузи/увімкнення роботи Punto
+    public var switchingMode: SwitchingMode         // Режим зміни розкладки (по колу / фіксована)
+    public var fixedTargetLanguage: PuntoLanguage   // Цільова мова при фіксованому перемиканні
+    public var transliterationTargetLanguage: PuntoLanguage // Цільова мова транслітерації
+    public var caseMode: CaseMode                   // Режим зміни регістру за замовчуванням
+    public var interfaceLanguage: InterfaceLanguage // Обрана мова інтерфейсу застосунку
 
+    // * -- Ініціалізатор з дефолтними значеннями --
     public init(
         schemaVersion: Int = 1,
         isEnabled: Bool = true,
@@ -206,16 +229,19 @@ public struct PuntoSettings: Codable, Sendable, Equatable {
         self.interfaceLanguage = interfaceLanguage
     }
 
+    // * -- Налаштування за замовчуванням --
     public static let `default` = PuntoSettings()
 }
 
+// * -- Результат успішного перетворення тексту --
 public struct TransformationResult: Sendable, Equatable {
-    public var command: PuntoCommand
-    public var originalText: String
-    public var replacementText: String
-    public var sourceLanguage: PuntoLanguage?
-    public var targetLanguage: PuntoLanguage?
+    public var command: PuntoCommand             // Яка саме команда виконалася
+    public var originalText: String              // Початковий текст перед перетворенням
+    public var replacementText: String           // Новий текст для заміни
+    public var sourceLanguage: PuntoLanguage?    // Виявлена початкова мова (якщо застосовно)
+    public var targetLanguage: PuntoLanguage?    // Кінцева мова розкладки або транслітерації (якщо застосовно)
 
+    // * -- Ініціалізатор результату --
     public init(
         command: PuntoCommand,
         originalText: String,
@@ -230,6 +256,7 @@ public struct TransformationResult: Sendable, Equatable {
         self.targetLanguage = targetLanguage
     }
 
+    // * -- Чи призвела операція до реальних змін у тексті --
     public var didChange: Bool {
         originalText != replacementText || (sourceLanguage != nil && targetLanguage != nil && sourceLanguage != targetLanguage)
     }

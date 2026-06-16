@@ -60,6 +60,7 @@ enum AppText {
         }
     }
 
+    // * -- Отримання локалізованої назви для режиму перемикання --
     static func switchingModeTitle(_ mode: SwitchingMode, _ language: InterfaceLanguage) -> String {
         switch mode {
         case .sequential:
@@ -69,6 +70,7 @@ enum AppText {
         }
     }
 
+    // * -- Отримання локалізованої назви для режиму зміни регістру --
     static func caseModeTitle(_ mode: CaseMode, _ language: InterfaceLanguage) -> String {
         switch mode {
         case .lower:
@@ -82,6 +84,7 @@ enum AppText {
         }
     }
 
+// * -- Локалізовані словники для кожної мови --
     private static let russian: [Key: String] = [
         .pause: "Пауза",
         .resume: "Продолжить",
@@ -130,6 +133,7 @@ enum AppText {
         .fixedTargetMode: "Фиксированная цель",
     ]
 
+    // * -- Локалізований словник для української мови -- 
     private static let ukrainian: [Key: String] = [
         .pause: "Пауза",
         .resume: "Продовжити",
@@ -178,6 +182,7 @@ enum AppText {
         .fixedTargetMode: "Фіксована ціль",
     ]
 
+    // * -- Локалізований словник для англійської мови -- 
     private static let english: [Key: String] = [
         .pause: "Pause",
         .resume: "Resume",

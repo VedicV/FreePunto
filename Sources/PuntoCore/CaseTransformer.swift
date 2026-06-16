@@ -2,6 +2,7 @@ import Foundation
 
 // * -- Перетворення регістру --
 public enum CaseTransformer {
+    
     // * -- Вибір режиму регістру --
     public static func transform(_ text: String, mode: CaseMode) -> String {
         switch mode {
@@ -66,14 +67,17 @@ public enum CaseTransformer {
         return result
     }
 
+    // Перевірка, чи є символ літерою.
     private static func isLetter(_ character: Character) -> Bool {
-        String(character).rangeOfCharacter(from: .letters) != nil
+        return String(character).rangeOfCharacter(from: .letters) != nil
     }
 
+    // Перевірка, чи є символ апострофом.
     private static func isApostrophe(_ character: Character) -> Bool {
-        character == "'" || character == "’"
+        return character == "'" || character == "’"
     }
 
+    // Інвертування регістру кожної літери (наприклад, для виправлення випадкового Caps Lock).
     private static func swapCase(_ text: String) -> String {
         return text.map { character in
             let value = String(character)

@@ -122,6 +122,7 @@ final class InputSourceController {
         }
     }
 
+    // Перевіряємо, чи збігається мова input source з мовою PuntoLanguage.
     private func sourceLanguageMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
         guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
             return false
@@ -141,6 +142,7 @@ final class InputSourceController {
         return false
     }
 
+    // Перевіряємо, чи збігається назва input source з мовою PuntoLanguage.
     private func sourceNameMatchScore(_ source: TISInputSource, language: PuntoLanguage) -> Int? {
         let identifier = stringProperty(kTISPropertyInputSourceID, from: source)?.lowercased()
         let localizedName = stringProperty(kTISPropertyLocalizedName, from: source)?.lowercased()
@@ -161,6 +163,7 @@ final class InputSourceController {
         return nil
     }
 
+    // Отримуємо рядкове значення властивості input source.
     private func stringProperty(_ property: CFString, from source: TISInputSource) -> String? {
         guard let value = TISGetInputSourceProperty(source, property) else {
             return nil
@@ -169,6 +172,7 @@ final class InputSourceController {
     }
 }
 
+// * -- Розширення для отримання пріоритетних ідентифікаторів та підказок назв розкладок для кожної мови --
 private extension PuntoLanguage {
     var preferredInputSourceIDs: Set<String> {
         switch self {

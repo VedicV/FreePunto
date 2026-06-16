@@ -180,6 +180,7 @@ final class HotKeyController {
     }
 }
 
+// * -- Розширення для перетворення CGEventFlags у HotKeyModifiers --
 private extension HotKeyModifiers {
     init(eventFlags: CGEventFlags) {
         var modifiers: HotKeyModifiers = []
