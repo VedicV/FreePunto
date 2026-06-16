@@ -463,7 +463,7 @@ final class TextIOController {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: pollStep)
+        waitForKeyboardSideEffects(timeout: 0.08)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             snapshot.restore(to: pasteboard)
@@ -475,7 +475,7 @@ final class TextIOController {
             snapshot.restore(to: pasteboard)
             return false
         }
-        waitForKeyboardSideEffects(timeout: pollStep)
+        waitForKeyboardSideEffects(timeout: 0.08)
 
         snapshot.restore(to: pasteboard)
         return true
@@ -484,12 +484,12 @@ final class TextIOController {
     private func activateGoogleSheetsCellEditMode() -> Bool {
         // Після Cmd+C Google Sheets лишає grid у copy-mode; Escape прибирає copy range.
         _ = sendKeyboardShortcut(keyCode: KeyCode.escape, flags: [])
-        waitForKeyboardSideEffects(timeout: 0.08)
+        waitForKeyboardSideEffects(timeout: 0.12)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.returnKey, flags: []) else {
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.25)
+        waitForKeyboardSideEffects(timeout: 0.45)
         return true
     }
 
