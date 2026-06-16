@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // * -- Запуск застосунку і підключення системних обробників --
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Маркер на робочий стіл — 100% надійний шлях.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let marker = home.appendingPathComponent("Desktop/freepunto_test.txt")
+        try? "launched at \(Date())\n".write(to: marker, atomically: true, encoding: .utf8)
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         state.onSettingsChanged = { [weak self] in
             self?.refreshAfterSettingsChange()
@@ -33,11 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rebuildMenu()
 
-        // Перевіряємо, чи є довіра до доступності, інакше запитуємо її.
+        // Перевіряємо Accessibility без системного діалогу (prompt: false).
+        // Користувач додає дозвіл вручну через Системні налаштування.
         if Diagnostics.accessibilityTrusted(prompt: false) {
+            rawLog("accessibility TRUSTED — hotKeys starting")
             hotKeys?.start()
         } else {
-            _ = Diagnostics.accessibilityTrusted(prompt: true)
+            rawLog("accessibility NOT TRUSTED — відкрийте Системні налаштування → Універсальний доступ → додайте FreePunto")
             Diagnostics.showPermissionsWindow(language: state.settings.interfaceLanguage)
         }
     }
@@ -229,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // * -- Тяжка частина (читання/заміна тексту) виконується на фоновій черзі commandQueue,
     // * -- щоб не блокувати головний RunLoop і не вимикати CGEventTap по таймауту. --
     private func performTextCommand(_ command: @escaping (String) -> TransformationResult) {
-        // (a) Перевірки на головному потоці.
+        // (a) Перевірки та захоплення контексту на головному потоці.
         guard state.settings.isEnabled else {
             return
         }
@@ -238,12 +245,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         isRunningCommand = true
 
+        rawLog("[AppDelegate] performTextCommand ENTRY, enabled=\(state.settings.isEnabled)")
+
+        // Захоплюємо bundleIdentifier, accessibility і фокусований елемент на головному потоці.
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let hasAX = Diagnostics.accessibilityTrusted(prompt: false)
+        let focusedEl: AXUIElement? = {
+            guard hasAX else { return nil }
+            guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+            let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            var focusedValue: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+            if result == .success, let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() {
+                return (focusedValue as! AXUIElement)
+            }
+            // Chrome/Electron блокують AX — це нормально, працюємо через Cmd+C.
+            rawLog("performTextCommand: focusedEl=no, AX error=\(result.rawValue) (ок для Chrome/Electron)")
+            return nil
+        }()
+        rawLog("performTextCommand: focusedEl=\(focusedEl != nil ? "yes" : "no")")
+
         commandQueue.async { [weak self] in
             guard let self else { return }
 
+            rawLog("[AppDelegate] commandQueue block START, bundle=\(bundleID ?? "nil") hasAX=\(hasAX)")
+
             // (b) Читаємо виділення або попереднє слово на фоні.
-            let target = self.textIO.readTarget()
+            let target = self.textIO.readTarget(bundleIdentifier: bundleID, hasAccessibility: hasAX, focusedElement: focusedEl)
             guard let target else {
+                rawLog("[AppDelegate] readTarget повернув nil → beep")
                 DispatchQueue.main.async {
                     NSSound.beep()
                     self.isRunningCommand = false
@@ -251,9 +281,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            rawLog("[AppDelegate] readTarget ok: text='\(target.text.prefix(50))'")
+
             // (c) Виконуємо перетворення і пропускаємо результат без змін.
             let result = command(target.text)
             guard result.didChange else {
+                rawLog("[AppDelegate] transform didChange=false → beep")
                 DispatchQueue.main.async {
                     NSSound.beep()
                     self.isRunningCommand = false
@@ -265,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if result.originalText != result.replacementText {
                 let ok = self.textIO.replace(target, with: result.replacementText)
                 guard ok else {
+                    rawLog("[AppDelegate] replace повернув false → showError")
                     DispatchQueue.main.async {
                         Diagnostics.showError(self.t(.couldNotReplaceText), language: self.state.settings.interfaceLanguage)
                         self.isRunningCommand = false
@@ -299,6 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // * -- Загальний сценарій текстової команди --
     private func performLayoutConversion() {
+        rawLog("[AppDelegate] performLayoutConversion")
         performTextCommand { [state] text in
             state.engine.convertLayout(text, settings: state.settings)
         }

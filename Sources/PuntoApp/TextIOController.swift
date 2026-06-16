@@ -56,6 +56,14 @@ final class TextIOController {
     private let commandTimeout: TimeInterval = 0.5
     private let pollStep: TimeInterval = 0.01
 
+    // * -- Виконати блок на головному потоці, якщо ми не на ньому.
+    // * -- NSPasteboard вимагає головного потоку; цей хелпер гарантує безпеку. --
+    @discardableResult
+    private func syncMain<T>(_ block: () throws -> T) rethrows -> T {
+        if Thread.isMainThread { return try block() }
+        return try DispatchQueue.main.sync(execute: block)
+    }
+
     // Прапорець діагностичного логування.
     // * -- Увімкнено в DEBUG або якщо виставлена змінна середовища FREEPUNTO_TRACE --
     private static let traceEnabled: Bool = {
@@ -69,23 +77,29 @@ final class TextIOController {
     // MARK: - Діагностичний трейс
 
     private func trace(_ message: @autoclosure () -> String) {
+        let msg = message()
+        // Завжди пишемо у файл для налагодження в release.
+        rawLog(msg)
         guard Self.traceEnabled else { return }
-        NSLog("[TextIO] %@", message())
+        NSLog("[TextIO] %@", msg)
     }
 
     // MARK: - Читання тексту
 
-    // * -- Читання тексту для перетворення --
-    func readTarget() -> TextTarget? {
-        let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
-        let frontmostApp = NSWorkspace.shared.frontmostApplication
-        let focusedElement = hasAccessibility ? focusedTextElement() : nil
+    // * -- Читання тексту для перетворення.
+    // * -- bundleIdentifier і hasAccessibility мають бути захоплені на головному потоці викликачем,
+    // * -- щоб не звертатись до NSWorkspace з фонової черги. --
+    func readTarget(bundleIdentifier: String?, hasAccessibility: Bool, focusedElement: AXUIElement?) -> TextTarget? {
+        trace("readTarget entry: bundle=\(bundleIdentifier ?? "nil") hasAX=\(hasAccessibility)")
+
         let context = makeInteractionContext(
-            bundleIdentifier: frontmostApp?.bundleIdentifier,
+            bundleIdentifier: bundleIdentifier,
             focusedElement: focusedElement)
 
+        trace("readTarget context: appKind=\(context.appKind) role=\(context.role ?? "nil") editable=\(context.isEditable) focusedEl=\(context.focusedElement != nil ? "yes" : "no")")
+
         trace(
-            "context=\(context.appKind) bundle=\(frontmostApp?.bundleIdentifier ?? "nil") role=\(context.role ?? "nil") editable=\(context.isEditable)"
+            "context=\(context.appKind) bundle=\(bundleIdentifier ?? "nil") role=\(context.role ?? "nil") editable=\(context.isEditable)"
         )
 
         switch context.appKind {
@@ -106,7 +120,7 @@ final class TextIOController {
                     copiedOrigin: .copiedEditableSelection,
                     axOrigin: .editableAXLastWord,
                     tracePrefix: "browserEditable")
-                : readBrowserGridLikeTarget()
+                : readBrowserNonEditable(context)
         case .other:
             guard context.isEditable else {
                 trace("other: non-editable context без безпечної стратегії запису")
@@ -123,7 +137,20 @@ final class TextIOController {
     private func readCodeEditorTarget(_ context: InteractionContext) -> TextTarget? {
         if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
             if TextScanner.looksLikeAutomaticLineCopy(copiedText) {
-                trace("codeEditor: відкинуто автоматичний line-copy")
+                // Замість відкидати line-copy, виймаємо останнє слово.
+                // trailingSpaces=0: при line-copy ми не знаємо позиції курсора,
+                // тому не видаляємо пробіли після слова (уникнення випадкового
+                // з'їдання пробілу між передостаннім і останнім словом).
+                if let wordResult = TextScanner.lastWord(in: copiedText) {
+                    let target = TextTarget(
+                        text: wordResult.word,
+                        trailingSpacesCount: 0,
+                        wordLength: wordResult.word.count,
+                        origin: .codeEditorAXLastWord)
+                    trace("codeEditor: line-copy → останнє слово '\(wordResult.word)'")
+                    return target
+                }
+                trace("codeEditor: відкинуто автоматичний line-copy (немає слова)")
             } else {
                 trace("codeEditor: читання через Cmd+C")
                 return makeCopiedTarget(copiedText, origin: .copiedCodeEditorSelection)
@@ -144,7 +171,16 @@ final class TextIOController {
     ) -> TextTarget? {
         if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
             if TextScanner.looksLikeAutomaticLineCopy(copiedText) {
-                trace("\(tracePrefix): відкинуто автоматичний line-copy")
+                if let wordResult = TextScanner.lastWord(in: copiedText) {
+                    let target = TextTarget(
+                        text: wordResult.word,
+                        trailingSpacesCount: 0,
+                        wordLength: wordResult.word.count,
+                        origin: axOrigin)
+                    trace("\(tracePrefix): line-copy → останнє слово '\(wordResult.word)'")
+                    return target
+                }
+                trace("\(tracePrefix): відкинуто автоматичний line-copy (немає слова)")
             } else {
                 trace("\(tracePrefix): читання через Cmd+C")
                 return makeCopiedTarget(copiedText, origin: copiedOrigin)
@@ -155,6 +191,17 @@ final class TextIOController {
             focusedElement: context.focusedElement,
             origin: axOrigin,
             tracePrefix: tracePrefix)
+    }
+
+    // * -- Браузер, не-editable: Cmd+C (grid/виділення). Без AX неможливо
+    // * -- отримати текст без виділення в полях вводу Chrome/Electron. --
+    private func readBrowserNonEditable(_ context: InteractionContext) -> TextTarget? {
+        if let copiedText = copyTextThroughPasteboard(timeout: 0.18) {
+            trace("browserNonEditable: читання через Cmd+C")
+            return makeCopiedTarget(copiedText, origin: .copiedBrowserGridLike)
+        }
+        trace("browserNonEditable: Cmd+C не дав текст")
+        return nil
     }
 
     private func readBrowserGridLikeTarget() -> TextTarget? {
@@ -202,19 +249,26 @@ final class TextIOController {
         origin: ReadOrigin,
         tracePrefix: String
     ) -> TextTarget? {
-        guard let focusedElement else { return nil }
+        guard let focusedElement else {
+            trace("\(tracePrefix): focusedElement == nil")
+            return nil
+        }
 
         var value: String? = nil
-        for _ in 0..<3 {
+        for attempt in 0..<3 {
             value = stringAttribute(kAXValueAttribute as CFString, from: focusedElement)
             if value != nil { break }
+            trace("\(tracePrefix): AXValue спроба \(attempt + 1) — nil")
             waitForKeyboardSideEffects(timeout: 0.05)
         }
 
-        guard let value,
-            let wordResult = TextScanner.lastWord(in: value)
-        else {
-            trace("\(tracePrefix): AXValue не дав останнє слово")
+        guard let value else {
+            trace("\(tracePrefix): AXValue == nil після 3 спроб")
+            return nil
+        }
+
+        guard let wordResult = TextScanner.lastWord(in: value) else {
+            trace("\(tracePrefix): lastWord не знайдено у value='\(value.prefix(80))'")
             return nil
         }
 
@@ -226,7 +280,7 @@ final class TextIOController {
         TextTarget(
             text: text,
             trailingSpacesCount: 0,
-            wordLength: (text as NSString).length,
+            wordLength: text.count,
             origin: origin)
     }
 
@@ -264,12 +318,12 @@ final class TextIOController {
         with replacement: String,
         settleTimeout: TimeInterval
     ) -> Bool {
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
+        let snapshot = syncMain { PasteboardSnapshot.capture(from: pasteboard) }
+        syncMain { pasteboard.clearContents() }
 
         let replacementWithSpaces = replacement + String(repeating: " ", count: target.trailingSpacesCount)
-        guard pasteboard.setString(replacementWithSpaces, forType: .string) else {
-            snapshot.restore(to: pasteboard)
+        guard syncMain({ pasteboard.setString(replacementWithSpaces, forType: .string) }) else {
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
 
@@ -277,113 +331,118 @@ final class TextIOController {
         for i in 0..<totalDeleteLength {
             guard sendKeyboardShortcut(keyCode: KeyCode.delete, flags: []) else {
                 trace("replaceLastWord: Backspace \(i) не вдався")
-                snapshot.restore(to: pasteboard)
+                syncMain { snapshot.restore(to: pasteboard) }
                 return false
             }
             waitForKeyboardSideEffects(timeout: pollStep)
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
         waitForKeyboardSideEffects(timeout: settleTimeout)
 
-        snapshot.restore(to: pasteboard)
+        syncMain { snapshot.restore(to: pasteboard) }
         return true
     }
 
     private func replaceStandaloneTerminalLastWord(_ target: TextTarget, with replacement: String) -> Bool {
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
+        let snapshot = syncMain { PasteboardSnapshot.capture(from: pasteboard) }
+        syncMain { pasteboard.clearContents() }
 
         let replacementWithSpaces = replacement + String(repeating: " ", count: target.trailingSpacesCount)
-        guard pasteboard.setString(replacementWithSpaces, forType: .string) else {
-            snapshot.restore(to: pasteboard)
+        guard syncMain({ pasteboard.setString(replacementWithSpaces, forType: .string) }) else {
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.w, flags: .maskControl) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.05)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.55)
 
         trace("standaloneTerminal: Ctrl+W + Cmd+V")
-        snapshot.restore(to: pasteboard)
+        syncMain { snapshot.restore(to: pasteboard) }
         return true
     }
 
     private func replaceBrowserGridLike(with replacement: String) -> Bool {
-        // * -- Знімок ролі до F2, щоб визначити зміну фокусу після входу в edit mode --
-        let previousRole: String? = focusedTextElement().flatMap {
-            stringAttribute(kAXRoleAttribute as CFString, from: $0)
-        }
+        let snapshot = syncMain { PasteboardSnapshot.capture(from: pasteboard) }
+        syncMain { pasteboard.clearContents() }
 
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
-
-        guard pasteboard.setString(replacement, forType: .string) else {
-            snapshot.restore(to: pasteboard)
+        guard syncMain({ pasteboard.setString(replacement, forType: .string) }) else {
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
 
+        // F2 завжди — CGEvent працює навіть без AX.
         guard sendKeyboardShortcut(keyCode: KeyCode.f2, flags: []) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
 
-        guard waitForGridEditMode(previousRole: previousRole, timeout: 0.6) else {
-            trace("browserGrid: F2 не дав жодного edit-mode сигналу — paste скасовано")
-            snapshot.restore(to: pasteboard)
-            return false
+        // Якщо AX є — перевіряємо edit mode. Якщо немає — чекаємо наосліп.
+        if focusedTextElement() != nil {
+            guard waitForGridEditMode(previousRole: nil, timeout: 0.6) else {
+                trace("browserGrid: F2 не дав edit-mode сигналу")
+                syncMain { snapshot.restore(to: pasteboard) }
+                return false
+            }
+        } else {
+            trace("browserGrid: AX недоступний, F2 наосліп, чекаємо 0.8с")
+            waitForKeyboardSideEffects(timeout: 0.8)
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.08)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
-        waitForKeyboardSideEffects(timeout: 0.55)
+        waitForKeyboardSideEffects(timeout: 1.0)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.a, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
         waitForKeyboardSideEffects(timeout: 0.08)
 
         trace("browserGrid: F2 → Cmd+A → Cmd+V → Cmd+A")
-        snapshot.restore(to: pasteboard)
+        syncMain { snapshot.restore(to: pasteboard) }
         return true
     }
 
     private func pasteReplacement(_ replacement: String, settleTimeout: TimeInterval) -> Bool {
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
+        let snapshot = syncMain { PasteboardSnapshot.capture(from: pasteboard) }
+        syncMain { pasteboard.clearContents() }
 
-        guard pasteboard.setString(replacement, forType: .string) else {
-            snapshot.restore(to: pasteboard)
+        guard syncMain({ pasteboard.setString(replacement, forType: .string) }) else {
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return false
         }
-        waitForKeyboardSideEffects(timeout: settleTimeout)
 
-        snapshot.restore(to: pasteboard)
+        // * -- C3: збільшений settleTimeout (1.0 с), щоб цільовий застосунок
+        // * -- встиг прочитати pasteboard до відновлення попереднього вмісту. --
+        waitForKeyboardSideEffects(timeout: max(settleTimeout, 1.0))
+
+        syncMain { snapshot.restore(to: pasteboard) }
         return true
     }
 
@@ -439,9 +498,11 @@ final class TextIOController {
     // * -- Canvas-таблиці не завжди виставляють AXEditable, тому приймаємо кілька сигналів. --
     private func waitForGridEditMode(previousRole: String?, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        var lastRole: String? = previousRole
         repeat {
             if let element = focusedTextElement() {
                 let role = stringAttribute(kAXRoleAttribute as CFString, from: element)
+                lastRole = role
                 // Сигнал 1: контекст став явно редагованим.
                 if isEditableContext(element, role: role) {
                     trace("browserGrid: edit mode сигнал=editable role=\(role ?? "nil")")
@@ -457,9 +518,12 @@ final class TextIOController {
                     trace("browserGrid: edit mode сигнал=selectedTextReadable role=\(role ?? "nil")")
                     return true
                 }
+            } else {
+                trace("browserGrid: focusedTextElement == nil у циклі очікування")
             }
             waitForKeyboardSideEffects(timeout: pollStep)
         } while Date() < deadline
+        trace("browserGrid: waitForGridEditMode FAILED, lastRole=\(lastRole ?? "nil")")
         return false
     }
 
@@ -475,17 +539,17 @@ final class TextIOController {
 
     // * -- Копіювання поточної цілі через pasteboard --
     private func copyTextThroughPasteboard(timeout: TimeInterval = 0.5) -> String? {
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
-        let clearChangeCount = pasteboard.changeCount
+        let snapshot = syncMain { PasteboardSnapshot.capture(from: pasteboard) }
+        syncMain { pasteboard.clearContents() }
+        let clearChangeCount = syncMain { pasteboard.changeCount }
 
         guard sendKeyboardShortcut(keyCode: KeyCode.c, flags: .maskCommand) else {
-            snapshot.restore(to: pasteboard)
+            syncMain { snapshot.restore(to: pasteboard) }
             return nil
         }
 
         let copied = waitForCopiedString(after: clearChangeCount, timeout: timeout)
-        snapshot.restore(to: pasteboard)
+        syncMain { snapshot.restore(to: pasteboard) }
 
         guard let copied,
             !copied.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -496,39 +560,65 @@ final class TextIOController {
         return copied
     }
 
-    // * -- Фокусований AX елемент --
+    // * -- Фокусований AX елемент.
+    // * -- AXUIElementCopyAttributeValue вимагає головного потоку (XPC до цільового застосунку).
+    // * -- Використовуємо прямий запит до frontmost app замість systemWide:
+    // * -- Chrome/VS Code блокують kAXFocusedUIElementAttribute через systemWide. --
     private func focusedTextElement() -> AXUIElement? {
-        let systemWide = AXUIElementCreateSystemWide()
-        var focusedValue: CFTypeRef?
-        let focusedResult = AXUIElementCopyAttributeValue(
-            systemWide, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+        syncMain {
+            guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+            let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            var focusedValue: CFTypeRef?
+            let focusedResult = AXUIElementCopyAttributeValue(
+                appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue)
 
-        guard focusedResult == .success,
-            let focusedValue,
-            CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
-        else {
-            return nil
+            guard focusedResult == .success else {
+                rawLog("focusedTextElement: AX error \(focusedResult.rawValue)")
+                return nil
+            }
+            guard let focusedValue else {
+                rawLog("focusedTextElement: focusedValue is nil")
+                return nil
+            }
+            guard CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+                rawLog("focusedTextElement: wrong typeID")
+                return nil
+            }
+
+            return unsafeBitCast(focusedValue, to: AXUIElement.self)
         }
-
-        return unsafeBitCast(focusedValue, to: AXUIElement.self)
     }
 
-    // * -- Рядковий атрибут AX --
+    // * -- Рядковий атрибут AX.
+    // * -- Обгорнуто в syncMain: AX-запити потребують головного потоку. --
     private func stringAttribute(_ attribute: CFString, from element: AXUIElement) -> String? {
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
-        guard result == .success else { return nil }
-        return value as? String
+        syncMain {
+            var value: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+            guard result == .success else {
+                rawLog("AX stringAttribute error: \(result.rawValue) for attr=\(attribute)")
+                return nil
+            }
+            return value as? String
+        }
     }
 
-    // * -- Булевий атрибут AX --
+    // * -- Булевий атрибут AX.
+    // * -- Обгорнуто в syncMain: AX-запити потребують головного потоку. --
     private func boolAttribute(_ attribute: CFString, from element: AXUIElement) -> Bool? {
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
-        guard result == .success, let value else { return nil }
-        guard CFGetTypeID(value) == CFBooleanGetTypeID() else { return nil }
-        let booleanValue = unsafeBitCast(value, to: CFBoolean.self)
-        return CFBooleanGetValue(booleanValue)
+        syncMain {
+            var value: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+            guard result == .success, let value else {
+                if result != .success {
+                    rawLog("AX boolAttribute error: \(result.rawValue) for attr=\(attribute)")
+                }
+                return nil
+            }
+            guard CFGetTypeID(value) == CFBooleanGetTypeID() else { return nil }
+            let booleanValue = unsafeBitCast(value, to: CFBoolean.self)
+            return CFBooleanGetValue(booleanValue)
+        }
     }
 
     // * -- Надсилання системного key down/up --
@@ -559,8 +649,8 @@ final class TextIOController {
     private func waitForCopiedString(after changeCount: Int, timeout: TimeInterval) -> String? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if pasteboard.changeCount > changeCount,
-                let copied = pasteboard.string(forType: .string)
+            if syncMain({ pasteboard.changeCount }) > changeCount,
+                let copied = syncMain({ pasteboard.string(forType: .string) })
             {
                 return copied
             }

@@ -129,6 +129,7 @@ final class HotKeyController {
         }
 
         if matches(settings.mainHotKey, event: event) {
+            rawLog("HotKeyController: main action triggered (keyCombo)")
             DispatchQueue.main.async(execute: actions.main)
             return nil
         }
@@ -163,6 +164,7 @@ final class HotKeyController {
             singleControlCandidate = true
         } else if noModifiers && singleControlCandidate && settings.isEnabled {
             singleControlCandidate = false
+            rawLog("HotKeyController: main action triggered (singleControl)")
             DispatchQueue.main.async(execute: actions.main)
         } else if !controlOnly {
             singleControlCandidate = false
