@@ -111,7 +111,7 @@ final class TextIOController {
     // * -- Читання тексту для перетворення --
     func readTarget() -> TextTarget? {
         let hasAccessibility = Diagnostics.accessibilityTrusted(prompt: false)
-        var context = resolveInteractionContext(hasAccessibility: hasAccessibility)
+        let context = resolveInteractionContext(hasAccessibility: hasAccessibility)
         let focusedElement = context.focusedElement
 
         if context.profile == .terminal,
@@ -126,10 +126,7 @@ final class TextIOController {
         }
 
         if context.profile == .googleSheets {
-            if let cellTarget = readGoogleSheetsCellTarget(context: context) {
-                return cellTarget
-            }
-            context = browserEditingContext(focusedElement: focusedElement)
+            return readGoogleSheetsCellTarget(context: context)
         }
 
         let shouldReadSelection =
@@ -393,7 +390,8 @@ final class TextIOController {
         }
 
         if deletePreviousWordBeforePaste {
-            waitForKeyboardSideEffects(timeout: pollStep)
+            // Для терміналу потрібно більше часу на обробку Control+W.
+            waitForKeyboardSideEffects(timeout: 0.05)
         }
 
         if deleteSelectionBeforePaste,
@@ -535,7 +533,10 @@ final class TextIOController {
             return nil
         }
 
-        let currentLine = value.components(separatedBy: .newlines).last ?? value
+        let lines = value.components(separatedBy: .newlines)
+        guard let currentLine = lines.last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            return nil
+        }
         return lastWord(in: currentLine)
     }
 
@@ -958,6 +959,24 @@ final class TextIOController {
             return nil
         }
 
+        // 1. Спроба отримати заголовок вікна через CGWindowList (швидко і надійно для Chrome/Safari)
+        let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
+        if let windowListInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as NSArray? {
+            for info in windowListInfo {
+                guard let dict = info as? NSDictionary else { continue }
+                let windowOwnerPID = dict[kCGWindowOwnerPID as String] as? pid_t
+                if windowOwnerPID == processIdentifier {
+                    let layer = dict[kCGWindowLayer as String] as? Int ?? 0
+                    if layer == 0 {
+                        if let name = dict[kCGWindowName as String] as? String, !name.isEmpty {
+                            return name
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Резервна спроба через Accessibility
         let appElement = AXUIElementCreateApplication(processIdentifier)
         var focusedWindowValue: CFTypeRef?
         let focusedWindowResult = AXUIElementCopyAttributeValue(

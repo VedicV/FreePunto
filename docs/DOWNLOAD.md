@@ -2,14 +2,14 @@
 
 ## Пряме завантаження DMG
 
-[Завантажити FreePunto-0.1.4.dmg](https://github.com/VedicV/FreePunto/releases/download/v0.1.4/FreePunto-0.1.4.dmg)
+[Завантажити FreePunto-0.1.2.dmg](https://github.com/VedicV/FreePunto/releases/download/v0.1.2/FreePunto-0.1.2.dmg)
 
-Це посилання веде на файл DMG у GitHub Releases. Воно почне працювати після публікації релізу `v0.1.4` і завантаження asset-файлу `FreePunto-0.1.4.dmg`.
+Це посилання веде на файл DMG у GitHub Releases. Воно почне працювати після публікації релізу `v0.1.2` і завантаження asset-файлу `FreePunto-0.1.2.dmg`.
 
 ## Встановлення
 
 1. Завантажте DMG.
-2. Відкрийте `FreePunto-0.1.4.dmg`.
+2. Відкрийте `FreePunto-0.1.2.dmg`.
 3. Перетягніть `FreePunto.app` до `Applications`.
 4. Запустіть FreePunto з `Applications`.
 
@@ -40,5 +40,5 @@
 Після збирання файл буде тут:
 
 ```text
-dist/FreePunto-0.1.4.dmg
+dist/FreePunto-0.1.2.dmg
 ```

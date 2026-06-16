@@ -57,7 +57,7 @@ FreePunto не відкриває звичайне вікно. Після зап
 Підсумковий файл:
 
 ```text
-dist/FreePunto-0.1.4.dmg
+dist/FreePunto-0.1.2.dmg
 ```
 
 Усередині DMG лежить `FreePunto.app` і ярлик `Applications`. Відкрийте DMG і перетягніть `FreePunto.app` до `Applications`.
@@ -81,17 +81,10 @@ open ~/Applications/FreePunto.app
 Надійний порядок оновлення:
 
 1. Повністю закрийте FreePunto через меню `Вийти з FreePunto`.
-2. Відкрийте `System Settings -> Privacy & Security -> Accessibility`.
-3. Якщо старий FreePunto є у списку, видаліть його кнопкою `-`.
-4. Відкрийте `System Settings -> Privacy & Security -> Input Monitoring`.
-5. Якщо старий FreePunto є у списку, також видаліть його кнопкою `-`.
-6. Замініть старий `FreePunto.app` новим у `Applications`.
-7. Запустіть новий FreePunto.
-8. Додайте FreePunto назад до `Accessibility` і, якщо потрібно, до `Input Monitoring`.
-9. Знову повністю закрийте FreePunto через меню.
-10. Запустіть FreePunto ще раз з `Applications`.
-
-Останній перезапуск важливий: після повторного додавання дозволів macOS не завжди одразу підключає глобальні клавіші та Accessibility-доступ до вже запущеного процесу.
+2. Відкрийте `System Settings -> Privacy & Security -> Accessibility`. У розділі `Accessibility` (Доступність) - `Input Monitoring` (Моніторинг введення) видаліть старий FreePunto зі списків кнопкою `-`.
+4. Замініть старий `FreePunto.app` новим у папці `Applications` (Програми).
+5. Запустіть новий FreePunto та надайте йому необхідні дозволи в системі.
+6. Якщо гарячі клавіші не запрацювали одразу — повністю закрийте застосунок через меню та запустіть його знову.
 
 Для майбутніх релізів можна зменшити цю проблему стабільним Developer ID-підписом. Локально це робиться так:
 

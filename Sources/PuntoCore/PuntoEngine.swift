@@ -119,19 +119,11 @@ public final class PuntoEngine: @unchecked Sendable {
         }
     }
 
-    // Цикл залежить від мови початкового фрагмента, щоб повторними натисканнями можна було повернутися назад.
+    // Цикл фіксований: EN -> RU -> UA -> EN, незалежно від мови початкового фрагмента.
     private static func cycle(startingWith language: PuntoLanguage, enabled: [PuntoLanguage]) -> [PuntoLanguage] {
-        let fullCycle: [PuntoLanguage]
-        switch language {
-        case .english:
-            fullCycle = [.english, .russian, .ukrainian]
-        case .russian:
-            fullCycle = [.russian, .english, .ukrainian]
-        case .ukrainian:
-            fullCycle = [.ukrainian, .english, .russian]
-        }
-
+        let fullCycle: [PuntoLanguage] = [.english, .russian, .ukrainian]
         let filtered = fullCycle.filter { enabled.contains($0) }
+        
         if !filtered.contains(language) {
             return [language] + filtered
         }

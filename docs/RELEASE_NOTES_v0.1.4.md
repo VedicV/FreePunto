@@ -1,4 +1,4 @@
-# FreePunto v0.1.4
+# FreePunto v0.1.2
 
 ## Українською
 
@@ -13,7 +13,7 @@
 
 ### Завантаження
 
-Завантажте `FreePunto-0.1.4.dmg` з assets цього релізу.
+Завантажте `FreePunto-0.1.2.dmg` з assets цього релізу.
 
 ## English
 
@@ -28,4 +28,4 @@ Technical release for Firefox when there is no explicit text selection.
 
 ### Download
 
-Download `FreePunto-0.1.4.dmg` from this release's assets.
+Download `FreePunto-0.1.2.dmg` from this release's assets.

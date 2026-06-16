@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="${APP_NAME:-FreePunto}"
 CONFIGURATION="${CONFIGURATION:-release}"
-VERSION="${VERSION:-0.1.4}"
+VERSION="${VERSION:-0.1.2}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 APP_DIR="$ROOT_DIR/dist/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
