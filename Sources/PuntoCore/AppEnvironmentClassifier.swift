@@ -53,4 +53,58 @@ public enum AppEnvironmentClassifier {
             }
         }
     }
+
+    // * -- Ідентифікатори автономних термінальних застосунків --
+    private static let standaloneTerminalIdentifiers: Set<String> = [
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "io.alacritty",
+        "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty",
+        "com.mitchellh.ghostty",
+        "com.github.wez.wezterm",
+        "co.zeit.hyper",
+    ]
+
+    // * -- Перевірка, чи є застосунок автономним терміналом --
+    public static func isStandaloneTerminal(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else {
+            return false
+        }
+
+        return standaloneTerminalIdentifiers.contains(bundleIdentifier)
+    }
+
+    // * -- Підказки для визначення CanvasTable у заголовку вікна --
+    private static let canvasTableTitleHints = [
+        "canvastable",
+        "canvas table",
+    ]
+
+    // * -- Перевірка, чи є вікно застосунком CanvasTable --
+    public static func isCanvasTableApp(windowTitle: String?) -> Bool {
+        guard let title = windowTitle?.lowercased() else {
+            return false
+        }
+
+        return canvasTableTitleHints.contains { title.contains($0) }
+    }
+
+    // * -- Підказки для визначення Google Sheets у заголовку вікна --
+    private static let googleSheetsTitleHints = [
+        "google sheets",
+        "google таблицы",
+        "google таблиці",
+        "таблицы google",
+        "таблиці google",
+    ]
+
+    // * -- Перевірка, чи є вікно Google Sheets --
+    public static func isGoogleSheetsWindow(windowTitle: String?) -> Bool {
+        guard let title = windowTitle?.lowercased() else {
+            return false
+        }
+
+        return googleSheetsTitleHints.contains { title.contains($0) }
+    }
 }
