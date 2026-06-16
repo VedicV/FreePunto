@@ -343,6 +343,13 @@ final class TextIOController {
             return false
         }
 
+        if let verificationSelection,
+            let selectedRange = verificationSelection.selectedRange
+        {
+            _ = setSelectedTextRange(selectedRange, for: verificationSelection.element)
+            waitForKeyboardSideEffects(timeout: pollStep)
+        }
+
         if deleteSelectionBeforePaste,
             !sendKeyboardShortcut(keyCode: KeyCode.delete, flags: [])
         {
@@ -624,9 +631,9 @@ final class TextIOController {
                 profile: profile,
                 focusedElement: focusedElement,
                 selectionCopyTimeout: 0.18,
-                preferPasteboardSelectionRead: true,
+                preferPasteboardSelectionRead: false,
                 requiresEditableFocusedElementForSelectionRead: false,
-                replacementOrder: [.pasteboard, .accessibility],
+                replacementOrder: [.accessibility, .pasteboard],
                 requiresVerifiedAccessibilityWrite: true,
                 verifyPasteboardReplaceWhenPossible: false,
                 deleteSelectionBeforePaste: true,
