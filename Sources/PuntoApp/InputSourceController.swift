@@ -14,7 +14,7 @@ final class InputSourceController {
         return TISSelectInputSource(source) == noErr
     }
 
-    // Шукаємо selectable keyboard input source за мовним кодом.
+    // Шукаємо selectable keyboard input source за мовним кодом або назвою розкладки.
     private func findInputSource(for language: PuntoLanguage) -> TISInputSource? {
         guard let categoryKey = kTISPropertyInputSourceCategory,
             let keyboardCategory = kTISCategoryKeyboardInputSource
@@ -61,6 +61,14 @@ final class InputSourceController {
 
     // Порівнюємо мови input source з кодом PuntoLanguage.
     private func sourceMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
+        if sourceLanguageMatches(source, language: language) {
+            return true
+        }
+
+        return sourceNameMatches(source, language: language)
+    }
+
+    private func sourceLanguageMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
         guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
             return false
         }
@@ -77,5 +85,30 @@ final class InputSourceController {
             }
         }
         return false
+    }
+
+    private func sourceNameMatches(_ source: TISInputSource, language: PuntoLanguage) -> Bool {
+        let values = [
+            stringProperty(kTISPropertyInputSourceID, from: source),
+            stringProperty(kTISPropertyLocalizedName, from: source),
+        ].compactMap { $0?.lowercased() }
+
+        return values.contains { value in
+            switch language {
+            case .english:
+                return value.contains("abc") || value.contains("us") || value.contains("english")
+            case .russian:
+                return value.contains("russian") || value.contains("ru-") || value.contains(".ru")
+            case .ukrainian:
+                return value.contains("ukrainian") || value.contains("uk-") || value.contains(".uk")
+            }
+        }
+    }
+
+    private func stringProperty(_ property: CFString, from source: TISInputSource) -> String? {
+        guard let value = TISGetInputSourceProperty(source, property) else {
+            return nil
+        }
+        return Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue() as? String
     }
 }
