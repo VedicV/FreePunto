@@ -3,6 +3,15 @@ import XCTest
 @testable import PuntoCore
 
 final class PuntoCoreTests: XCTestCase {
+    func testDefaultInterfaceLanguageDoesNotChangeKeyboardTargets() {
+        let settings = PuntoSettings(interfaceLanguage: .ukrainian)
+
+        XCTAssertEqual(settings.interfaceLanguage, .ukrainian)
+        XCTAssertEqual(settings.switchingMode, .sequential)
+        XCTAssertEqual(settings.fixedTargetLanguage, .russian)
+        XCTAssertEqual(settings.transliterationTargetLanguage, .russian)
+    }
+
     func testLayoutTransformsEnglishRussianAndUkrainianKeyboards() {
         XCTAssertEqual(
             LayoutTransformer.transform("ghbdtn vbh!", from: .english, to: .russian),
