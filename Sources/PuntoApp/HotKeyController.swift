@@ -16,13 +16,18 @@ final class HotKeyController {
     private var runLoopSource: CFRunLoopSource?
     private var singleControlCandidate = false
 
+    var isRunning: Bool {
+        eventTap != nil
+    }
+
     init(settingsProvider: @escaping () -> PuntoSettings, actions: Actions) {
         self.settingsProvider = settingsProvider
         self.actions = actions
     }
 
     // * -- Підключення глобального перехоплювача клавіш --
-    func start() {
+    @discardableResult
+    func start(showErrorDialog: Bool = false) -> Bool {
         stop()
 
         let mask =
@@ -43,7 +48,8 @@ final class HotKeyController {
             return controller.handle(type: type, event: event)
         }
 
-        eventTap = CGEvent.tapCreate(
+        // Пробуємо session event tap, якщо не вдалося — hid event tap
+        var tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
@@ -51,22 +57,38 @@ final class HotKeyController {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
-
-        guard let eventTap else {
-            let language = settingsProvider().interfaceLanguage
-            Diagnostics.showError(
-                AppText.get(.globalHotkeysUnavailable, language),
-                detail: AppText.get(.globalHotkeysUnavailableDetail, language),
-                language: language
+        if tap == nil {
+            tap = CGEvent.tapCreate(
+                tap: .cghidEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: CGEventMask(mask),
+                callback: callback,
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
             )
-            return
         }
 
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        guard let createdTap = tap else {
+            rawLog("HotKeyController: не вдалося створити CGEventTap (потрібен дозвіл Accessibility / Input Monitoring)")
+            if showErrorDialog {
+                let language = settingsProvider().interfaceLanguage
+                Diagnostics.showError(
+                    AppText.get(.globalHotkeysUnavailable, language),
+                    detail: AppText.get(.globalHotkeysUnavailableDetail, language),
+                    language: language
+                )
+            }
+            return false
+        }
+
+        eventTap = createdTap
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, createdTap, 0)
         if let runLoopSource {
             CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+        CGEvent.tapEnable(tap: createdTap, enable: true)
+        rawLog("HotKeyController: глобальний event tap успішно активовано")
+        return true
     }
 
     // * -- Вимкнення глобального перехоплювача клавіш --
@@ -158,7 +180,7 @@ final class HotKeyController {
         let controlOnly = flags == .maskControl
         let noModifiers = flags.isEmpty
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let isControlKey = keyCode == 59 || keyCode == 62
+        let isControlKey = keyCode == 59 || keyCode == 62 || keyCode == 57 || controlOnly
 
         if controlOnly && isControlKey {
             singleControlCandidate = true

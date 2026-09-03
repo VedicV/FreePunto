@@ -119,13 +119,20 @@ public final class PuntoEngine: @unchecked Sendable {
         }
     }
 
-    // Цикл фіксований: EN -> RU -> UA -> EN, незалежно від мови початкового фрагмента.
+    // Цикл завжди починається з поточної мови, щоб наступний елемент cycle[1] був правильною наступною мовою.
     private static func cycle(startingWith language: PuntoLanguage, enabled: [PuntoLanguage]) -> [PuntoLanguage] {
-        let fullCycle: [PuntoLanguage] = [.english, .russian, .ukrainian]
-        let filtered = fullCycle.filter { enabled.contains($0) }
-        
+        let fullCycle: [PuntoLanguage] = [.english, .ukrainian, .russian]
+        var filtered = fullCycle.filter { enabled.contains($0) }
+        if filtered.isEmpty {
+            filtered = PuntoLanguage.allCases
+        }
+
         if !filtered.contains(language) {
             return [language] + filtered
+        }
+
+        if let idx = filtered.firstIndex(of: language) {
+            return Array(filtered[idx...] + filtered[..<idx])
         }
         return filtered
     }

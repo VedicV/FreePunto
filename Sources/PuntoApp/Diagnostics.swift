@@ -11,6 +11,13 @@ enum Diagnostics {
         return AXIsProcessTrustedWithOptions(options)
     }
 
+    // * -- Відкриття Системних параметрів на сторінці Доступності --
+    static func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     // * -- Відображення вікна з інформацією про стан дозволів доступності --
     static func showPermissionsWindow(language: InterfaceLanguage = .systemDefault) {
         let trusted = accessibilityTrusted(prompt: true)

@@ -1,29 +1,74 @@
 import Foundation
 
-// * -- Перетворення розкладки через фізичні клавіші --
+// * -- Перетворення розкладки через фізичні клавіші та системний UCKeyTranslate --
 public enum LayoutTransformer {
-    private static let englishToRussian: [String: String] = [
-        "`": "ё",
-        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н",
-        "u": "г", "i": "ш", "o": "щ", "p": "з", "[": "х", "]": "ъ",
-        "a": "ф", "s": "ы", "d": "в", "f": "а", "g": "п", "h": "р",
-        "j": "о", "k": "л", "l": "д", ";": "ж", "'": "э",
-        "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т",
-        "m": "ь", ",": "б", ".": "ю"
+    // Повні статичні таблиці маппінгу символів (клавіша за клавішею, включно з Shift, <, >, пунктуацією)
+    private static let englishToUkrainianStatic: [Character: Character] = [
+        // Нижній регістр
+        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г", "i": "ш", "o": "щ", "p": "з",
+        "[": "х", "]": "ї", "a": "ф", "s": "і", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о", "k": "л",
+        "l": "д", ";": "ж", "'": "є", "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т", "m": "ь",
+        ",": "б", ".": "ю", "/": ".", "`": "ґ", "\\": "ʼ",
+
+        // Верхній регістр (літери)
+        "Q": "Й", "W": "Ц", "E": "У", "R": "К", "T": "Е", "Y": "Н", "U": "Г", "I": "Ш", "O": "Щ", "P": "З",
+        "{": "Х", "}": "Ї", "A": "Ф", "S": "І", "D": "В", "F": "А", "G": "П", "H": "Р", "J": "О", "K": "Л",
+        "L": "Д", ":": "Ж", "\"": "Є", "Z": "Я", "X": "Ч", "C": "С", "V": "М", "B": "И", "N": "Т", "M": "Ь",
+        "<": "Б", ">": "Ю", "?": ",", "~": "Ґ", "|": "₴",
+
+        // Shift + Цифровий ряд
+        "@": "\"", "#": "№", "$": ";", "^": ":", "&": "?",
     ]
 
-    private static let englishToUkrainian: [String: String] = [
-        "`": "ґ",
-        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н",
-        "u": "г", "i": "ш", "o": "щ", "p": "з", "[": "х", "]": "ї",
-        "a": "ф", "s": "і", "d": "в", "f": "а", "g": "п", "h": "р",
-        "j": "о", "k": "л", "l": "д", ";": "ж", "'": "є",
-        "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т",
-        "m": "ь", ",": "б", ".": "ю"
+    private static let englishToRussianStatic: [Character: Character] = [
+        // Нижній регістр
+        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г", "i": "ш", "o": "щ", "p": "з",
+        "[": "х", "]": "ъ", "a": "ф", "s": "ы", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о", "k": "л",
+        "l": "д", ";": "ж", "'": "э", "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т", "m": "ь",
+        ",": "б", ".": "ю", "/": ".", "`": "ё", "\\": "\\",
+
+        // Верхній регістр (літери)
+        "Q": "Й", "W": "Ц", "E": "У", "R": "К", "T": "Е", "Y": "Н", "U": "Г", "I": "Ш", "O": "Щ", "P": "З",
+        "{": "Х", "}": "Ъ", "A": "Ф", "S": "Ы", "D": "В", "F": "А", "G": "П", "H": "Р", "J": "О", "K": "Л",
+        "L": "Д", ":": "Ж", "\"": "Э", "Z": "Я", "X": "Ч", "C": "С", "V": "М", "B": "И", "N": "Т", "M": "Ь",
+        "<": "Б", ">": "Ю", "?": ",", "~": "Ё", "|": "/",
+
+        // Shift + Цифровий ряд
+        "@": "\"", "#": "№", "$": ";", "^": ":", "&": "?",
     ]
 
-    private static let russianToEnglish = Dictionary(uniqueKeysWithValues: englishToRussian.map { ($0.value, $0.key) })
-    private static let ukrainianToEnglish = Dictionary(uniqueKeysWithValues: englishToUkrainian.map { ($0.value, $0.key) })
+    private static let ukrainianToEnglishStatic: [Character: Character] = {
+        var dict: [Character: Character] = [:]
+        for (k, v) in englishToUkrainianStatic {
+            dict[v] = k
+        }
+        return dict
+    }()
+
+    private static let russianToEnglishStatic: [Character: Character] = {
+        var dict: [Character: Character] = [:]
+        for (k, v) in englishToRussianStatic {
+            dict[v] = k
+        }
+        return dict
+    }()
+
+    // Прямий переклад між кириличними розкладками UA <-> RU (клавіші з різними літерами)
+    private static let ukrainianToRussianStatic: [Character: Character] = [
+        "і": "ы", "І": "Ы",
+        "ї": "ъ", "Ї": "Ъ",
+        "є": "э", "Є": "Э",
+        "ґ": "ё", "Ґ": "Ё",
+        "ʼ": "\\", "₴": "/"
+    ]
+
+    private static let russianToUkrainianStatic: [Character: Character] = [
+        "ы": "і", "Ы": "І",
+        "ъ": "ї", "Ъ": "Ї",
+        "э": "є", "Э": "Є",
+        "ё": "ґ", "Ё": "Ґ",
+        "\\": "ʼ", "/": "₴"
+    ]
 
     // * -- Перетворення тексту між розкладками --
     public static func transform(_ text: String, from source: PuntoLanguage, to target: PuntoLanguage) -> String {
@@ -31,74 +76,50 @@ public enum LayoutTransformer {
             return text
         }
 
-        // Якщо переводимо з англійської на кирилицю (російську/українську), і в кінці є крапки,
-        // зберігаємо їх як крапки, а не перетворюємо на літеру "ю".
-        if source == .english && (target == .russian || target == .ukrainian) {
+        // Обробка трикрапки наприкінці (зберігаємо '...', якщо це очевидна пунктуаційна крапка)
+        if (source == .english && (target == .russian || target == .ukrainian)) {
             let dotsCount = text.reversed().prefix(while: { $0 == "." }).count
-            if dotsCount > 0 {
+            if dotsCount >= 2 {
                 let prefix = text.dropLast(dotsCount)
                 let suffix = text.suffix(dotsCount)
                 let transformedPrefix = prefix.map { character in
-                    transform(character, from: source, to: target)
-                }.joined()
-                return transformedPrefix + String(suffix)
+                    transformSingleCharacter(character, from: source, to: target)
+                }
+                return String(transformedPrefix) + String(suffix)
             }
         }
 
-        return text.map { character in
-            transform(character, from: source, to: target)
-        }.joined()
+        let transformed = text.map { character in
+            transformSingleCharacter(character, from: source, to: target)
+        }
+        return String(transformed)
     }
 
-    // Кожен символ спочатку приводиться до спільної EN-клавіші, потім переводиться в цільову розкладку.
-    private static func transform(_ character: Character, from source: PuntoLanguage, to target: PuntoLanguage) -> String {
-        let original = String(character)
-        let lower = original.lowercased()
+    // * -- Перетворення одного символу --
+    public static func transformSingleCharacter(_ character: Character, from source: PuntoLanguage, to target: PuntoLanguage) -> Character {
+        guard source != target else { return character }
 
-        guard let englishKey = englishKey(for: lower, source: source),
-              let replacement = replacement(for: englishKey, target: target) else {
-            return original
+        // 1. Спочатку пробуємо динамічний системний маппер UCKeyTranslate
+        if let dynamicChar = DynamicLayoutMapper.shared.translateCharacter(character, from: source, to: target) {
+            return dynamicChar
         }
 
-        return preserveLetterCase(from: original, replacement: replacement)
-    }
-
-    // Повернення базової англійської клавіші для символу вхідної мови.
-    private static func englishKey(for lowerCharacter: String, source: PuntoLanguage) -> String? {
-        switch source {
-        case .english:
-            return lowerCharacter
-        case .russian:
-            return russianToEnglish[lowerCharacter]
-        case .ukrainian:
-            return ukrainianToEnglish[lowerCharacter]
+        // 2. Статичний fallback для прямого перетворення
+        switch (source, target) {
+        case (.english, .ukrainian):
+            return englishToUkrainianStatic[character] ?? character
+        case (.english, .russian):
+            return englishToRussianStatic[character] ?? character
+        case (.ukrainian, .english):
+            return ukrainianToEnglishStatic[character] ?? character
+        case (.russian, .english):
+            return russianToEnglishStatic[character] ?? character
+        case (.ukrainian, .russian):
+            return ukrainianToRussianStatic[character] ?? character
+        case (.russian, .ukrainian):
+            return russianToUkrainianStatic[character] ?? character
+        default:
+            return character
         }
-    }
-
-    // Повернення символу в цільовій мові за відповідною англійською клавішею.
-    private static func replacement(for englishKey: String, target: PuntoLanguage) -> String? {
-        switch target {
-        case .english:
-            return englishKey
-        case .russian:
-            return englishToRussian[englishKey]
-        case .ukrainian:
-            return englishToUkrainian[englishKey]
-        }
-    }
-
-    // Зберігаємо регістр символа, але не чіпаємо пробіли, пунктуацію і невідомі символи.
-    private static func preserveLetterCase(from original: String, replacement: String) -> String {
-        guard original != original.lowercased() else {
-            return replacement
-        }
-
-        if original == original.uppercased() {
-            return replacement.uppercased()
-        }
-
-        let first = replacement.prefix(1).uppercased()
-        let rest = replacement.dropFirst().lowercased()
-        return first + rest
     }
 }

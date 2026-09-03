@@ -11,16 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController?
     // * -- Послідовна черга для тяжкої частини команд (читання/заміна тексту) --
     private let commandQueue = DispatchQueue(label: "com.freepunto.command")
-    // * -- Захист від перекрытих команд: якщо команда вже виконується, нову ігноруємо --
+    // * -- Захист від перекритих команд: якщо команда вже виконується, нову ігноруємо --
     private var isRunningCommand = false
+    private var permissionTimer: Timer?
 
     // * -- Запуск застосунку і підключення системних обробників --
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Маркер на робочий стіл — 100% надійний шлях.
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let marker = home.appendingPathComponent("Desktop/freepunto_test.txt")
-        try? "launched at \(Date())\n".write(to: marker, atomically: true, encoding: .utf8)
-
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         state.onSettingsChanged = { [weak self] in
             self?.refreshAfterSettingsChange()
@@ -38,27 +34,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rebuildMenu()
 
-        // Перевіряємо Accessibility без системного діалогу (prompt: false).
-        // Користувач додає дозвіл вручну через Системні налаштування.
-        if Diagnostics.accessibilityTrusted(prompt: false) {
-            rawLog("accessibility TRUSTED — hotKeys starting")
-            hotKeys?.start()
-        } else {
-            rawLog("accessibility NOT TRUSTED — відкрийте Системні налаштування → Універсальний доступ → додайте FreePunto")
-            Diagnostics.showPermissionsWindow(language: state.settings.interfaceLanguage)
+        checkAndStartHotKeysIfNeeded()
+
+        // Постійний моніторинг стану Доступності (Accessibility):
+        // Коли користувач вмикає тумблер у Системних параметрах, FreePunto
+        // підхоплює дозвіл та запускає глобальні гарячі клавіші без перезапуску!
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.checkAndStartHotKeysIfNeeded()
+        }
+
+        if !Diagnostics.accessibilityTrusted(prompt: false) {
+            rawLog("accessibility NOT TRUSTED — очікуємо надання дозволу в Системних параметрах")
+            Diagnostics.openAccessibilitySettings()
         }
     }
 
     // * -- Зупинка глобальних обробників --
     func applicationWillTerminate(_ notification: Notification) {
+        permissionTimer?.invalidate()
         hotKeys?.stop()
+    }
+
+    // * -- Перевірка та автоматичний запуск гарячих клавіш --
+    private func checkAndStartHotKeysIfNeeded() {
+        let isTrusted = Diagnostics.accessibilityTrusted(prompt: false)
+        let isRunning = hotKeys?.isRunning == true
+
+        if isTrusted && !isRunning {
+            rawLog("accessibility TRUSTED — hotKeys starting")
+            hotKeys?.start()
+            rebuildMenu()
+        } else if !isTrusted && isRunning {
+            rawLog("accessibility LOST — hotKeys stopping")
+            hotKeys?.stop()
+            rebuildMenu()
+        }
     }
 
     // * -- Застосування змінених налаштувань --
     private func refreshAfterSettingsChange() {
-        if Diagnostics.accessibilityTrusted(prompt: false) {
-            hotKeys?.start()
-        }
+        checkAndStartHotKeysIfNeeded()
         rebuildMenu()
     }
 
@@ -91,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let launchTitle = state.settings.launchAtLogin ? t(.disableLaunchAtLogin) : t(.launchAtLogin)
         menu.addItem(makeItem(title: launchTitle, action: #selector(toggleLaunchAtLogin)))
         menu.addItem(makeItem(title: t(.permissions), action: #selector(openPermissions)))
+        menu.addItem(makeItem(title: t(.copyDiagnostics), action: #selector(copyDiagnosticsReport)))
         menu.addItem(.separator())
         menu.addItem(versionAndBuildMenuItem())
         menu.addItem(makeItem(title: t(.quit), action: #selector(quit)))
@@ -104,8 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return StatusIconFactory.make(.paused)
         }
 
+        let activeLangs = inputSources.activeLanguages()
         return StatusIconFactory.make(.language(
-            state.engine.nextLayoutLanguageHint(settings: state.settings),
+            state.engine.nextLayoutLanguageHint(settings: state.settings, enabledLanguages: activeLangs),
             fixedMode: state.settings.switchingMode == .fixedTarget
         ))
     }
@@ -116,7 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return "FreePunto: PAUSE"
         }
 
-        let hint = state.engine.nextLayoutLanguageHint(settings: state.settings).statusTitle
+        let activeLangs = inputSources.activeLanguages()
+        let hint = state.engine.nextLayoutLanguageHint(settings: state.settings, enabledLanguages: activeLangs).statusTitle
         return state.settings.switchingMode == .fixedTarget ? "FreePunto: \(hint)*" : "FreePunto: \(hint)"
     }
 
@@ -254,13 +272,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard hasAX else { return nil }
             guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
             let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+            // Вмикаємо доступність для Chromium/Electron (VS Code, Antigravity, Chrome)
+            AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+
             var focusedValue: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue)
-            if result == .success, let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() {
-                return (focusedValue as! AXUIElement)
+            var result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+
+            // Fallback 1: фокусований елемент активного вікна (обхід -25211 у Chromium/Electron)
+            if result != .success {
+                var windowValue: CFTypeRef?
+                if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowValue) == .success,
+                   let win = windowValue as! AXUIElement? {
+                    result = AXUIElementCopyAttributeValue(win, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+                }
             }
-            // Chrome/Electron блокують AX — це нормально, працюємо через Cmd+C.
-            rawLog("performTextCommand: focusedEl=no, AX error=\(result.rawValue) (ок для Chrome/Electron)")
+
+            // Fallback 2: глобальний systemWide елемент
+            if result != .success {
+                let sys = AXUIElementCreateSystemWide()
+                result = AXUIElementCopyAttributeValue(sys, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+            }
+
+            if result == .success, let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() {
+                let el = (focusedValue as! AXUIElement)
+                var roleRef: CFTypeRef?
+                var titleRef: CFTypeRef?
+                var descRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef)
+                AXUIElementCopyAttributeValue(el, kAXTitleAttribute as CFString, &titleRef)
+                AXUIElementCopyAttributeValue(el, kAXDescriptionAttribute as CFString, &descRef)
+                let roleStr = roleRef as? String ?? "nil"
+                let titleStr = titleRef as? String ?? "nil"
+                let descStr = descRef as? String ?? "nil"
+                rawLog("performTextCommand: focusedEl=yes role=\(roleStr) title=\(titleStr) desc=\(descStr)")
+                return el
+            }
+
+            rawLog("performTextCommand: focusedEl=no, AX error=\(result.rawValue)")
             return nil
         }()
         rawLog("performTextCommand: focusedEl=\(focusedEl != nil ? "yes" : "no")")
@@ -311,13 +361,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Синхронізуємо macOS input source з мовою результату після заміни,
             // щоб перемикання розкладки не скидало активне виділення у браузерах.
             DispatchQueue.main.async {
-                if let targetLanguage = result.targetLanguage,
-                   !self.inputSources.selectInputSource(for: targetLanguage) {
-                    Diagnostics.showError(
-                        self.t(.inputSourceUnavailable),
-                        detail: String(format: self.t(.addInputSourceDetail), targetLanguage.title),
-                        language: self.state.settings.interfaceLanguage
-                    )
+                if let targetLanguage = result.targetLanguage {
+                    if !self.inputSources.selectInputSource(for: targetLanguage) {
+                        rawLog("[AppDelegate] Warning: could not switch macOS input source to \(targetLanguage.title)")
+                    }
                 }
 
                 self.rebuildMenu()
@@ -334,8 +381,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // * -- Загальний сценарій текстової команди --
     private func performLayoutConversion() {
         rawLog("[AppDelegate] performLayoutConversion")
+        let activeLangs = inputSources.activeLanguages()
         performTextCommand { [state] text in
-            state.engine.convertLayout(text, settings: state.settings)
+            state.engine.convertLayout(text, settings: state.settings, enabledLanguages: activeLangs)
         }
     }
 
@@ -446,5 +494,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // * -- Вихід із застосунку --
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    // * -- Копіювання діагностичного звіту в буфер обміну --
+    @objc private func copyDiagnosticsReport() {
+        let activeLangs = inputSources.activeLanguages().map { $0.rawValue }.joined(separator: ", ")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2.0"
+        let frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
+        let axTrusted = Diagnostics.accessibilityTrusted(prompt: false)
+        let report = """
+        === FreePunto Diagnostics Report ===
+        Version: \(version)
+        Accessibility Trusted: \(axTrusted)
+        Frontmost App: \(frontApp)
+        Active Layouts: \(activeLangs)
+        Timestamp: \(ISO8601DateFormatter().string(from: Date()))
+
+        Recent Activity:
+        \(DiagnosticsLog.shared.recentLogs())
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
     }
 }

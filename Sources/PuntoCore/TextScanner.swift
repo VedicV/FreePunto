@@ -25,7 +25,7 @@ public enum TextScanner {
         }
 
         let wordLength = (word as NSString).length
-        guard wordLength > 0, wordLength <= 40 else {
+        guard wordLength > 0, wordLength <= 300 else {
             return nil
         }
 
