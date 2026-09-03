@@ -6,6 +6,7 @@ public enum AppEnvironmentClassifier {
         "com.microsoft.VSCodeInsiders",
         "com.microsoft.VSCodeExploration",
         "com.vscodium",
+        "com.todesktop.230313mzl4w4u92",
         "com.google.antigravity",
         "com.google.antigravity-ide",
     ]

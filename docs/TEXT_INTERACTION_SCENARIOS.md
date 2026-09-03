@@ -78,7 +78,7 @@ FreePunto не змінює слово всередині поля без явн
 
 Спроба успішна тільки якщо `changeCount` змінився і новий string непорожній.
 
-Для code editor треба відкидати автоматичний line-copy, коли редактор копіює весь поточний рядок без користувацького виділення.
+Для code editor треба відкидати автоматичний line-copy як користувацьке виділення. У VS Code/Cursor/Antigravity такий line-copy може бути лише технічним fallback для отримання останнього слова, коли AX недоступний.
 
 ### `AXValue`
 
@@ -130,13 +130,14 @@ FreePunto не змінює слово всередині поля без явн
 
 ### Code editor
 
-Профіль визначається через `bundleIdentifier` для VS Code, Antigravity та споріднених редакторів.
+Профіль визначається через `bundleIdentifier` для VS Code, Cursor, Antigravity та споріднених редакторів.
 
 Читання:
 
 1. Спочатку `Cmd+C`.
 2. Якщо copy схожий на автоматичний line-copy без виділення, результат не приймається як виділений текст.
-3. Якщо `Cmd+C` не дав реального виділення, пробуємо `AXValue` і беремо останнє слово.
+3. Для VS Code/Cursor/Antigravity можна витягнути останнє слово з line-copy fallback, якщо це єдиний доступний робочий шлях.
+4. Якщо `Cmd+C` не дав реального виділення або line-copy fallback не дав слова, пробуємо `AXValue` і беремо останнє слово.
 
 Заміна:
 
@@ -197,7 +198,7 @@ FreePunto не змінює слово всередині поля без явн
 | --- | --- | --- |
 | Terminal | `AXValue` -> останнє слово | terminal-safe delete word -> `Cmd+V` |
 | Editable text | `Cmd+C`, інакше `AXValue` -> останнє слово | `Cmd+V` або delete word -> `Cmd+V` |
-| Code editor | `Cmd+C` без line-copy, інакше `AXValue` -> останнє слово | `Cmd+V` або delete word -> `Cmd+V` |
+| Code editor | `Cmd+C` без line-copy для виділення; line-copy fallback або `AXValue` -> останнє слово | `Cmd+V` або delete word -> `Cmd+V` |
 | Browser editable | `Cmd+C`, інакше `AXValue` -> останнє слово | `Cmd+V` або delete word -> `Cmd+V` |
 | Browser non-editable / grid-like | `Cmd+C` | `F2` -> verify edit mode -> `Cmd+A` -> `Cmd+V` -> `Cmd+A` |
 
@@ -222,6 +223,7 @@ FreePunto не змінює слово всередині поля без явн
 - Виділений текст у VS Code замінюється як виділення.
 - VS Code без виділення не приймає автоматично скопійований рядок як target.
 - Останнє слово у VS Code замінюється через `AXValue`-сценарій.
+- Cursor і Antigravity проходять ті самі перевірки, що й VS Code: editor selection, editor last-word fallback, integrated terminal.
 - Виділений текст у Chrome textarea/contenteditable замінюється через `Cmd+C` -> `Cmd+V`.
 - Останнє слово у Chrome textarea/contenteditable замінюється через `AXValue`.
 - Browser non-editable/grid читається через `Cmd+C`, входить у edit mode через `F2`, вставляє через `Cmd+A` -> `Cmd+V`, не використовує прямий paste у grid.

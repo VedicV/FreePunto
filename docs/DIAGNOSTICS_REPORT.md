@@ -1,170 +1,174 @@
-# Диагностика и исправления FreePunto — отчёт
+# Діагностика та виправлення FreePunto - звіт
 
 Дата: 2026-06-16
 
-## Выявленные проблемы и их корневые причины
+## Виявлені проблеми та їхні кореневі причини
 
-### 1. AX (Accessibility) недоступен для Chrome/Electron-приложений
+### 1. AX (Accessibility) недоступний для Chrome/Electron-застосунків
 
-**Симптом:** `AX error=-25212` (`kAXErrorAPIDisabled`) при любом AX-запросе к VS Code, Google Chrome.
+**Симптом:** `AX error=-25212` (`kAXErrorAPIDisabled`) при будь-якому AX-запиті до VS Code, Google Chrome.
 
-**Причина:** Chromium/Electron-приложения отключают Accessibility API, если не обнаружен «настоящий» ассистивный инструмент (VoiceOver и т.п.). `AXIsProcessTrusted()` возвращает `true`, но целевое приложение блокирует AX-запросы на своей стороне.
+**Причина:** Chromium/Electron-застосунки вимикають Accessibility API, якщо не виявлено "справжній" асистивний інструмент (VoiceOver тощо). `AXIsProcessTrusted()` повертає `true`, але цільовий застосунок блокує AX-запити на своєму боці.
 
-**Следствие:** невозможно получить `focusedElement`, `AXRole`, `AXValue`, `AXEditable` для Chrome/VS Code. AX-путь (`readAXLastWord`, `waitForGridEditMode`) не работает.
+**Наслідок:** неможливо отримати `focusedElement`, `AXRole`, `AXValue`, `AXEditable` для Chrome/VS Code. AX-шлях (`readAXLastWord`, `waitForGridEditMode`) не працює.
 
-**Решение:** реализован обходной путь через `Cmd+C` (line-copy → извлечение последнего слова) для VS Code редактора. Для Google Sheets — слепой F2-танец без AX-проверки.
+**Рішення:** реалізовано обхідний шлях через `Cmd+C` (line-copy -> витягування останнього слова) для VS Code редактора. Для Google Sheets - сліпий F2-танець без AX-перевірки.
 
-**Статус:** фундаментальное ограничение. Без поддержки со стороны Chrome/Electron AX не заработает.
-
----
-
-### 2. `focusedTextElement()` возвращал nil даже при `hasAX=true`
-
-**Симптом:** `focusedEl=no` в логах, хотя `accessibility TRUSTED`.
-
-**Причина:** `AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute)` вызывался через `DispatchQueue.main.sync` из фоновой очереди (`commandQueue`). AX-запросы через GCD main queue работают нестабильно для чужих процессов.
-
-**Решение:** `focusedElement` захватывается на главном потоке в `performTextCommand` ДО dispatch на `commandQueue`. Вызов идёт напрямую (без `syncMain`). Для Terminal/Firefox — работает. Для Chrome/VS Code — см. п. 1.
-
-**Статус:** исправлено.
+**Статус:** фундаментальне обмеження. Без підтримки з боку Chrome/Electron AX не запрацює.
 
 ---
 
-### 3. NSPasteboard-операции с фонового потока
+### 2. `focusedTextElement()` повертав nil навіть при `hasAX=true`
 
-**Симптом:** потенциальная гонка данных в pasteboard.
+**Симптом:** `focusedEl=no` у логах, хоча `accessibility TRUSTED`.
 
-**Причина:** `NSPasteboard.general` документирован как main-thread-only. Код вызывал `clearContents`, `setString`, `changeCount` из `commandQueue` (фон).
+**Причина:** `AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute)` викликався через `DispatchQueue.main.sync` із фонової черги (`commandQueue`). AX-запити через GCD main queue працюють нестабільно для чужих процесів.
 
-**Решение:** все операции с NSPasteboard обёрнуты в `syncMain { }`. Добавлен хелпер `@discardableResult syncMain<T>(_:)`.
+**Рішення:** `focusedElement` захоплюється на головному потоці в `performTextCommand` ДО dispatch на `commandQueue`. Виклик іде напряму (без `syncMain`). Для Terminal/Firefox - працює. Для Chrome/VS Code - див. п. 1.
 
-**Статус:** исправлено.
-
----
-
-### 4. Line-copy → удаление лишних пробелов
-
-**Симптом:** в чате/редакторе при замене последнего слова «съедался» пробел перед ним.
-
-**Причина:** при line-copy (Cmd+C без выделения в VS Code) копируется строка с `\n`. `TextScanner.lastWord` включает `\n` в `trailingSpacesCount`. Backspace-удаление пытается стереть `wordLength + trailingSpacesCount` символов, включая невидимый `\n` перед курсором.
-
-**Решение:** для line-copy пути `trailingSpacesCount = 0`.
-
-**Статус:** исправлено.
+**Статус:** виправлено.
 
 ---
 
-### 5. Блокировка главного потока при ожидании
+### 3. NSPasteboard-операції з фонового потоку
 
-**Симптом:** event tap отваливался по таймауту (`tapDisabledByTimeout`).
+**Симптом:** потенційна гонка даних у pasteboard.
 
-**Причина (исходная):** `RunLoop.current.run(until:)` в `waitForKeyboardSideEffects` блокировал главный run loop.
+**Причина:** `NSPasteboard.general` документований як main-thread-only. Код викликав `clearContents`, `setString`, `changeCount` із `commandQueue` (фон).
 
-**Решение:** заменён на `Thread.sleep` + вынос тяжёлой работы на `commandQueue` (фоновая serial-очередь). Главный поток освобождается сразу после dispatch.
+**Рішення:** усі операції з NSPasteboard обгорнуті в `syncMain { }`. Додано helper `@discardableResult syncMain<T>(_:)`.
 
-**Статус:** исправлено.
-
----
-
-### 6. NSString.length вместо графемного count
-
-**Симптом:** потенциально неправильное удаление эмодзи/составных символов.
-
-**Причина:** `makeCopiedTarget` использовал `(text as NSString).length` (UTF-16 code units).
-
-**Решение:** заменён на `text.count` (графемы).
-
-**Статус:** исправлено.
+**Статус:** виправлено.
 
 ---
 
-### 7. Гонка восстановления pasteboard
+### 4. Line-copy -> видалення зайвих пробілів
 
-**Симптом:** иногда вставлялось старое содержимое буфера обмена.
+**Симптом:** у чаті/редакторі при заміні останнього слова "з'їдався" пробіл перед ним.
 
-**Причина:** `snapshot.restore(to:)` вызывался через фиксированный таймаут после Cmd+V. Если целевое приложение читало буфер асинхронно, восстановление происходило раньше.
+**Причина:** при line-copy (Cmd+C без виділення у VS Code) копіюється рядок із `\n`. `TextScanner.lastWord` включає `\n` у `trailingSpacesCount`. Backspace-видалення намагається стерти `wordLength + trailingSpacesCount` символів, включно з невидимим `\n` перед курсором.
 
-**Решение:** `settleTimeout` увеличен до 1.0 секунды в `pasteReplacement` и `replaceBrowserGridLike`.
+**Рішення:** для line-copy шляху `trailingSpacesCount = 0`.
 
-**Статус:** частично исправлено (увеличенный таймаут). Полное решение требует подтверждения вставки.
-
----
-
-### 8. Системный диалог Accessibility по кругу
-
-**Симптом:** при каждом запуске появлялся системный диалог запроса Accessibility-разрешения.
-
-**Причина:** `AXIsProcessTrustedWithOptions(prompt: true)` вызывался в `applicationDidFinishLaunching`.
-
-**Решение:** заменён на `prompt: false`. Пользователь добавляет разрешение вручную через Системные настройки.
-
-**Статус:** исправлено.
+**Статус:** виправлено.
 
 ---
 
-### 9. Ad-hoc подпись меняется при каждой сборке
+### 5. Блокування головного потоку під час очікування
 
-**Симптом:** после каждой пересборки macOS требует заново авторизовать приложение в Accessibility.
+**Симптом:** event tap відвалювався за таймаутом (`tapDisabledByTimeout`).
 
-**Причина:** `codesign --sign -` создаёт новую ad-hoc подпись при каждом билде. macOS привязывает разрешения к подписи.
+**Причина (початкова):** `RunLoop.current.run(until:)` у `waitForKeyboardSideEffects` блокував головний run loop.
 
-**Решение:** не исправлено (требуется постоянный code signing identity). Для разработки — переавторизовывать после каждой сборки.
+**Рішення:** замінено на `Thread.sleep` + винесення важкої роботи на `commandQueue` (фонова serial-черга). Головний потік звільняється одразу після dispatch.
 
-**Статус:** известное ограничение dev-сборок.
+**Статус:** виправлено.
 
 ---
 
-## Что сделано (итог изменений в коде)
+### 6. NSString.length замість графемного count
+
+**Симптом:** потенційно неправильне видалення емодзі/складених символів.
+
+**Причина:** `makeCopiedTarget` використовував `(text as NSString).length` (UTF-16 code units).
+
+**Рішення:** замінено на `text.count` (графеми).
+
+**Статус:** виправлено.
+
+---
+
+### 7. Гонка відновлення pasteboard
+
+**Симптом:** іноді вставлявся старий вміст буфера обміну.
+
+**Причина:** `snapshot.restore(to:)` викликався через фіксований таймаут після Cmd+V. Якщо цільовий застосунок читав буфер асинхронно, відновлення відбувалося раніше.
+
+**Рішення:** `settleTimeout` збільшено до 1.0 секунди в `pasteReplacement` і `replaceBrowserGridLike`.
+
+**Статус:** частково виправлено (збільшений таймаут). Повне рішення потребує підтвердження вставки.
+
+---
+
+### 8. Системний діалог Accessibility по колу
+
+**Симптом:** під час кожного запуску з'являвся системний діалог запиту Accessibility-дозволу.
+
+**Причина:** `AXIsProcessTrustedWithOptions(prompt: true)` викликався в `applicationDidFinishLaunching`.
+
+**Рішення:** замінено на `prompt: false`. Користувач додає дозвіл вручну через Системні налаштування.
+
+**Статус:** виправлено.
+
+---
+
+### 9. Ad-hoc підпис змінюється під час кожної збірки
+
+**Симптом:** після кожної пересбірки macOS вимагає заново авторизувати застосунок в Accessibility.
+
+**Причина:** `codesign --sign -` створює новий ad-hoc підпис під час кожного build. macOS прив'язує дозволи до підпису.
+
+**Рішення:** не виправлено (потрібен постійний code signing identity). Для розробки - переавторизовувати після кожної збірки.
+
+**Статус:** відоме обмеження dev-збірок.
+
+---
+
+## Що зроблено (підсумок змін у коді)
 
 ### `AppDelegate.swift`
-- `performTextCommand`: захват `bundleID`, `hasAX`, `focusedEl` на главном потоке до dispatch
-- Убран `AXIsProcessTrustedWithOptions(prompt: true)` из `applicationDidFinishLaunching`
-- Диагностический лог `rawLog` на всех этапах команды
+
+- `performTextCommand`: захоплення `bundleID`, `hasAX`, `focusedEl` на головному потоці до dispatch.
+- Прибрано `AXIsProcessTrustedWithOptions(prompt: true)` з `applicationDidFinishLaunching`.
+- Діагностичний лог `rawLog` на всіх етапах команди.
 
 ### `TextIOController.swift`
-- `readTarget(bundleIdentifier:hasAccessibility:focusedElement:)` — новый сигнатура
-- `syncMain<T>(_:)` — хелпер для main-thread-only операций (NSPasteboard, AX)
-- Все NSPasteboard-операции обёрнуты в `syncMain`
-- `readCodeEditorTarget` / `readEditableTarget`: line-copy → извлечение последнего слова, `trailingSpacesCount=0`
-- `replaceBrowserGridLike`: F2 отправляется всегда, при отсутствии AX — ожидание 0.8с вслепую
-- `readBrowserNonEditable`: новый метод, Cmd+C без AXValue-фоллбека
-- `focusedTextElement`, `stringAttribute`, `boolAttribute`: обёрнуты в `syncMain`, лог AX-ошибок
-- `makeCopiedTarget`: `text.count` вместо `NSString.length`
+
+- `readTarget(bundleIdentifier:hasAccessibility:focusedElement:)` - нова сигнатура.
+- `syncMain<T>(_:)` - helper для main-thread-only операцій (NSPasteboard, AX).
+- Усі NSPasteboard-операції обгорнуті в `syncMain`.
+- `readCodeEditorTarget` / `readEditableTarget`: line-copy -> витягування останнього слова, `trailingSpacesCount=0`.
+- `replaceBrowserGridLike`: F2 надсилається завжди, за відсутності AX - очікування 0.8с наосліп.
+- `readBrowserNonEditable`: новий метод, Cmd+C без AXValue-fallback.
+- `focusedTextElement`, `stringAttribute`, `boolAttribute`: обгорнуті в `syncMain`, лог AX-помилок.
+- `makeCopiedTarget`: `text.count` замість `NSString.length`.
 
 ### `HotKeyController.swift`
-- `rawLog` при срабатывании `actions.main`
+
+- `rawLog` при спрацюванні `actions.main`.
 
 ### `Diag.swift`
-- `rawLog(_:)` — синхронная запись в `~/Desktop/freepunto.log`
+
+- `rawLog(_:)` - синхронний запис у `~/Desktop/freepunto.log`.
 
 ---
 
-## Оставшиеся проблемы (фундаментальные ограничения)
+## Залишкові проблеми (фундаментальні обмеження)
 
-### А. Поля ввода в Chrome/Firefox — только через выделение
+### А. Поля введення в Chrome/Firefox - тільки через виділення
 
-Без AX невозможно прочитать текст из `<input>`/`<textarea>` в Chrome без выделения. Cmd+C без выделения в браузере не копирует строку (в отличие от VS Code).
+Без AX неможливо прочитати текст із `<input>`/`<textarea>` у Chrome без виділення. Cmd+C без виділення в браузері не копіює рядок (на відміну від VS Code).
 
-**Обходной путь:** выделить текст перед нажатием хоткея.
-
----
-
-### Б. VS Code интегрированный терминал
-
-Без AX терминал внутри VS Code неотличим от редактора (bundle ID один — `com.microsoft.VSCode`). Cmd+C в терминале копирует выделение, а не строку. Line-copy-путь не работает.
-
-**Обходной путь:** использовать родной Terminal.app (работает через AX).
+**Обхідний шлях:** виділити текст перед натисканням хоткея.
 
 ---
 
-### В. Google Sheets — F2 через CGEvent может не входить в edit mode
+### Б. VS Code інтегрований термінал
 
-Chrome может игнорировать синтетические нажатия F2. Реализован слепой F2-танец с ожиданием 0.8с. Если F2 не срабатывает в конкретной версии Chrome — ячейка не изменится.
+Без AX термінал усередині VS Code невідрізний від редактора (bundle ID один - `com.microsoft.VSCode`). Cmd+C у терміналі копіює виділення, а не рядок. Line-copy-шлях не працює.
 
-**Обходной путь:** дважды кликнуть по ячейке (войти в edit mode), затем хоткей.
+**Обхідний шлях:** використовувати рідний Terminal.app (працює через AX).
 
 ---
 
-### Г. Ad-hoc подпись — переавторизация при каждой сборке
+### В. Google Sheets - F2 через CGEvent може не входити в edit mode
 
-**Обходной путь:** не пересобирать без необходимости. Использовать один собранный `.app` для тестирования.
+Chrome може ігнорувати синтетичні натискання F2. Реалізовано сліпий F2-танець з очікуванням 0.8с. Якщо F2 не спрацьовує в конкретній версії Chrome - комірка не зміниться.
+
+**Обхідний шлях:** двічі клікнути по комірці (увійти в edit mode), потім хоткей.
+
+---
+
+### Г. Ad-hoc підпис - переавторизація під час кожної збірки
+
+**Обхідний шлях:** не пересобирати без потреби. Використовувати один зібраний `.app` для тестування.

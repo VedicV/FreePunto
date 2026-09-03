@@ -1,23 +1,23 @@
-# План реализации новой логики TextIOController
+# План реалізації нової логіки TextIOController
 
-Цель: переписать чтение и замену текста так, чтобы FreePunto использовал только два способа получения текста: `Cmd+C -> NSPasteboard` и `AXValue`. Все решения о замене должны зависеть от фактического origin чтения, а не от попытки заранее угадать конкретный сайт по заголовку окна.
+Мета: переписати читання і заміну тексту так, щоб FreePunto використовував тільки два способи отримання тексту: `Cmd+C -> NSPasteboard` і `AXValue`. Усі рішення про заміну мають залежати від фактичного origin читання, а не від спроби заздалегідь вгадати конкретний сайт за заголовком вікна.
 
 ## Контракт
 
-1. Не использовать `windowTitle` для определения Google Sheets, CanvasTable или другого grid/canvas.
-2. Не использовать для чтения `AXSelectedText`, `AXSelectedTextRange`, `Option+Shift+Left`, `Cmd+Shift+Left`, double click, `Return`, `F2`, `Cmd+A`.
-3. Разрешенные способы чтения: `Cmd+C -> NSPasteboard` и `AXValue`.
-4. Terminal читает только через `AXValue` и работает только с последним словом.
-5. Browser non-editable/grid читает через `Cmd+C`, но не вставляет прямым `Cmd+V`; запись только через `F2 -> verify edit mode -> Cmd+A -> Cmd+V -> Cmd+A`.
-6. `Return`, double click и `Escape` не использовать в browser/grid сценарии.
-7. Если `F2` не перевел browser/grid в edit mode, не вставлять в grid напрямую; завершить команду ошибкой/beep.
-8. Если нужно изменить середину текста, пользователь должен сам выделить нужный фрагмент.
+1. Не використовувати `windowTitle` для визначення Google Sheets, CanvasTable або іншого grid/canvas.
+2. Не використовувати для читання `AXSelectedText`, `AXSelectedTextRange`, `Option+Shift+Left`, `Cmd+Shift+Left`, double click, `Return`, `F2`, `Cmd+A`.
+3. Дозволені способи читання: `Cmd+C -> NSPasteboard` і `AXValue`.
+4. Terminal читає тільки через `AXValue` і працює тільки з останнім словом.
+5. Browser non-editable/grid читає через `Cmd+C`, але не вставляє прямим `Cmd+V`; запис тільки через `F2 -> verify edit mode -> Cmd+A -> Cmd+V -> Cmd+A`.
+6. `Return`, double click і `Escape` не використовувати в browser/grid сценарії.
+7. Якщо `F2` не перевів browser/grid в edit mode, не вставляти в grid напряму; завершити команду помилкою/beep.
+8. Якщо потрібно змінити середину тексту, користувач має сам виділити потрібний фрагмент.
 
-## Шаг 1. Ввести origin чтения
+## Крок 1. Ввести origin читання
 
-В `Sources/PuntoApp/TextIOController.swift` заменить текущую модель `source/profile` на более точную модель origin.
+У `Sources/PuntoApp/TextIOController.swift` замінити поточну модель `source/profile` на точнішу модель origin.
 
-Пример:
+Приклад:
 
 ```swift
 private enum ReadOrigin {
@@ -30,17 +30,17 @@ private enum ReadOrigin {
 }
 ```
 
-`TextTarget` должен хранить:
+`TextTarget` має зберігати:
 
 - `text`;
 - `origin`;
 - `wordLength`;
 - `trailingSpacesCount`;
-- данные, нужные для замены.
+- дані, потрібні для заміни.
 
-## Шаг 2. Ввести простой контекст активного приложения
+## Крок 2. Ввести простий контекст активного застосунку
 
-Собрать контекст один раз в начале `readTarget()`:
+Зібрати контекст один раз на початку `readTarget()`:
 
 - `bundleIdentifier`;
 - `appKind`: terminal, codeEditor, browser, other;
@@ -49,113 +49,114 @@ private enum ReadOrigin {
 - `AXEditable`;
 - `isEditableContext`.
 
-Удалить зависимость от `AppEnvironmentClassifier.isGoogleSheetsWindow(...)` и `isCanvasTableApp(...)` в выборе сценария чтения/записи.
+Прибрати залежність від `AppEnvironmentClassifier.isGoogleSheetsWindow(...)` і `isCanvasTableApp(...)` у виборі сценарію читання/запису.
 
-## Шаг 3. Переписать helper для `Cmd+C`
+## Крок 3. Переписати helper для `Cmd+C`
 
-Helper должен:
+Helper має:
 
-1. Сохранить snapshot pasteboard.
-2. Очистить pasteboard.
-3. Запомнить `changeCount`.
-4. Отправить `Cmd+C`.
-5. Дождаться нового string.
-6. Восстановить pasteboard.
-7. Вернуть string только если он реально появился и непустой.
+1. Зберегти snapshot pasteboard.
+2. Очистити pasteboard.
+3. Запам'ятати `changeCount`.
+4. Надіслати `Cmd+C`.
+5. Дочекатися нового string.
+6. Відновити pasteboard.
+7. Повернути string тільки якщо він реально з'явився і непорожній.
 
-Для code editor добавить проверку line-copy: не принимать результат как выделение, если он похож на строку, которую редактор скопировал без выделения.
+Для code editor додати перевірку line-copy: не приймати результат як виділення, якщо він схожий на рядок, який редактор скопіював без виділення. Для VS Code/Cursor/Antigravity line-copy fallback можна використовувати тільки як технічний спосіб отримати останнє слово.
 
-## Шаг 4. Переписать чтение
+## Крок 4. Переписати читання
 
 Порядок:
 
 1. Terminal:
-   - только `AXValue`;
-   - взять последнее слово последнего релевантного ряда;
-   - вернуть `.terminalAXLastWord`;
-   - если не получилось, `nil`.
+   - тільки `AXValue`;
+   - взяти останнє слово останнього релевантного рядка;
+   - повернути `.terminalAXLastWord`;
+   - якщо не вийшло, `nil`.
 
 2. Editable context:
-   - попробовать `Cmd+C`;
-   - если получилось, вернуть `.copiedEditableSelection`;
-   - если не получилось, прочитать `AXValue`, взять последнее слово, вернуть `.editableAXLastWord`.
+   - спробувати `Cmd+C`;
+   - якщо вийшло, повернути `.copiedEditableSelection`;
+   - якщо не вийшло, прочитати `AXValue`, взяти останнє слово, повернути `.editableAXLastWord`.
 
 3. Code editor:
-   - попробовать `Cmd+C`;
-   - если это реальное выделение, вернуть `.copiedCodeEditorSelection`;
-   - если это line-copy или пусто, прочитать `AXValue`, взять последнее слово, вернуть `.codeEditorAXLastWord`.
+   - спробувати `Cmd+C`;
+   - якщо це реальне виділення, повернути `.copiedCodeEditorSelection`;
+   - якщо це line-copy, не вважати його виділенням, але можна витягнути останнє слово як `.codeEditorAXLastWord`;
+   - якщо copy порожній або line-copy fallback не дав слова, прочитати `AXValue`, взяти останнє слово, повернути `.codeEditorAXLastWord`.
 
 4. Browser non-editable:
-   - попробовать `Cmd+C`;
-   - если получилось, вернуть `.copiedBrowserGridLike`;
-   - если не получилось, `nil`.
+   - спробувати `Cmd+C`;
+   - якщо вийшло, повернути `.copiedBrowserGridLike`;
+   - якщо не вийшло, `nil`.
 
 5. Other non-editable:
-   - попробовать `Cmd+C`;
-   - если нет безопасной стратегии записи, лучше вернуть `nil`, чем вставлять в неизвестный non-editable контекст.
+   - спробувати `Cmd+C`;
+   - якщо немає безпечної стратегії запису, краще повернути `nil`, ніж вставляти в невідомий non-editable контекст.
 
-## Шаг 5. Переписать замену по origin
+## Крок 5. Переписати заміну за origin
 
 1. `.copiedEditableSelection` / `.copiedCodeEditorSelection`:
-   - положить replacement в pasteboard;
+   - покласти replacement у pasteboard;
    - `Cmd+V`;
-   - восстановить pasteboard.
+   - відновити pasteboard.
 
 2. `.editableAXLastWord` / `.codeEditorAXLastWord`:
-   - удалить `wordLength + trailingSpacesCount` символов Backspace;
-   - вставить replacement через `Cmd+V`;
-   - восстановить pasteboard.
+   - видалити `wordLength + trailingSpacesCount` символів Backspace;
+   - вставити replacement через `Cmd+V`;
+   - відновити pasteboard.
 
 3. `.terminalAXLastWord`:
-   - standalone terminal: terminal-safe delete word, затем `Cmd+V`;
-   - integrated terminal: Backspace по длине прочитанного слова, затем `Cmd+V`;
-   - не использовать `Control+C`, `Return`, `F2`, `Cmd+A`, double click, `Cmd+Shift+Left`.
+   - standalone terminal: terminal-safe delete word, потім `Cmd+V`;
+   - integrated terminal: Backspace за довжиною прочитаного слова, потім `Cmd+V`;
+   - не використовувати `Control+C`, `Return`, `F2`, `Cmd+A`, double click, `Cmd+Shift+Left`.
 
 4. `.copiedBrowserGridLike`:
-   - нажать `F2`;
-   - дождаться стабилизации;
-   - проверить, что текущий focused AX context стал editable;
-   - если не стал editable, вернуть `false`;
+   - натиснути `F2`;
+   - дочекатися стабілізації;
+   - перевірити, що поточний focused AX context став editable;
+   - якщо не став editable, повернути `false`;
    - `Cmd+A`;
    - `Cmd+V`;
-   - `Cmd+A`, чтобы результат остался выделенным для повторного преобразования;
-   - не нажимать `Return`;
-   - не делать прямой `Cmd+V` в grid.
+   - `Cmd+A`, щоб результат залишився виділеним для повторного перетворення;
+   - не натискати `Return`;
+   - не робити прямий `Cmd+V` у grid.
 
-## Шаг 6. Обновить классификатор
+## Крок 6. Оновити класифікатор
 
-В `Sources/PuntoCore/AppEnvironmentClassifier.swift` оставить только устойчивые классификации:
+У `Sources/PuntoCore/AppEnvironmentClassifier.swift` залишити тільки стійкі класифікації:
 
-- VS Code / Antigravity family по `bundleIdentifier`;
-- standalone terminals по `bundleIdentifier`;
-- browser identifiers по `bundleIdentifier`, если их удобно вынести из `TextIOController`.
+- VS Code / Cursor / Antigravity family за `bundleIdentifier`;
+- standalone terminals за `bundleIdentifier`;
+- browser identifiers за `bundleIdentifier`, якщо їх зручно винести з `TextIOController`.
 
-Удалить или перестать использовать title-based Google Sheets / CanvasTable detection.
+Видалити або перестати використовувати title-based Google Sheets / CanvasTable detection.
 
-## Шаг 7. Тесты и проверки
+## Крок 7. Тести і перевірки
 
-Минимальные automated checks:
+Мінімальні automated checks:
 
 - `swift test`;
-- тесты классификатора без window title Google Sheets/CanvasTable как обязательного сценария;
-- тесты helper-логики, которую можно вынести в pure functions: last word extraction, line-copy rejection, app kind classification.
+- тести класифікатора без window title Google Sheets/CanvasTable як обов'язкового сценарію;
+- тести helper-логіки, яку можна винести в pure functions: last word extraction, line-copy detection, app kind classification.
 
 Manual QA:
 
-- Terminal: последнее слово заменяется, запрещенные клавиши не отправляются.
-- VS Code: выделенный текст заменяется; без выделения line-copy не принимается как target.
-- Chrome/Safari/Firefox editable field: выделение заменяется через copy/paste; без выделения заменяется последнее слово через `AXValue`.
-- Google Sheets active cell: `Cmd+C` читает cell, `F2` входит в edit mode, `Cmd+A -> Cmd+V -> Cmd+A` заменяет текст, прямого paste в grid нет.
-- CanvasTable active cell: после реализации `F2` в CanvasTable тот же сценарий работает.
-- Browser/grid: если `F2` не дал edit mode, FreePunto не вставляет текст.
+- Terminal: останнє слово замінюється, заборонені клавіші не надсилаються.
+- VS Code/Cursor/Antigravity: виділений текст замінюється; без виділення line-copy не приймається як selection target, але може дати останнє слово.
+- Chrome/Safari/Firefox editable field: виділення замінюється через copy/paste; без виділення замінюється останнє слово через `AXValue`.
+- Google Sheets active cell: `Cmd+C` читає cell, `F2` входить в edit mode, `Cmd+A -> Cmd+V -> Cmd+A` замінює текст, прямого paste в grid немає.
+- CanvasTable active cell: після реалізації `F2` у CanvasTable той самий сценарій працює.
+- Browser/grid: якщо `F2` не дав edit mode, FreePunto не вставляє текст.
 
-## Порядок работы в новом чате
+## Порядок роботи в новому чаті
 
-1. Начать с чтения `docs/TEXT_INTERACTION_SCENARIOS.md` и этого плана.
-2. Затем открыть `Sources/PuntoApp/TextIOController.swift`.
-3. Сначала внедрить `ReadOrigin` и новый `TextTarget`.
-4. Затем переписать `readTarget()`.
-5. После этого переписать `replace(...)`.
-6. Только после компиляции чистить старые helper-и и title-based grid detection.
-7. Запустить `swift test`.
-8. Сверить итог с manual QA списком.
+1. Почати з читання `docs/TEXT_INTERACTION_SCENARIOS.md` і цього плану.
+2. Потім відкрити `Sources/PuntoApp/TextIOController.swift`.
+3. Спочатку впровадити `ReadOrigin` і новий `TextTarget`.
+4. Потім переписати `readTarget()`.
+5. Після цього переписати `replace(...)`.
+6. Тільки після компіляції чистити старі helper-и і title-based grid detection.
+7. Запустити `swift test`.
+8. Звірити підсумок із manual QA списком.

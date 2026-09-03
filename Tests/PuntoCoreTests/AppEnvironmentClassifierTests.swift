@@ -6,6 +6,7 @@ final class AppEnvironmentClassifierTests: XCTestCase {
     func testRecognizesVSCodeFamilyBundleIdentifiers() {
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.microsoft.VSCode"))
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.microsoft.VSCodeInsiders"))
+        XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.todesktop.230313mzl4w4u92"))
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.google.antigravity"))
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.google.antigravity-ide"))
         XCTAssertFalse(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.apple.Terminal"))

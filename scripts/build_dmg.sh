@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="${APP_NAME:-FreePunto}"
-VERSION="${VERSION:-0.1.25}"
+VERSION="${VERSION:-0.1.2}"
 VOLUME_NAME="${VOLUME_NAME:-FreePunto}"
 DMG_NAME="${DMG_NAME:-FreePunto-${VERSION}.dmg}"
 DIST_DIR="$ROOT_DIR/dist"
