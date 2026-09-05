@@ -145,6 +145,23 @@ public final class DynamicLayoutMapper: @unchecked Sendable {
         return unsafeBitCast(layoutDataPtr, to: CFData.self)
     }
 
+    // Стандартні коди клавіш основного буквено-цифрового блоку macOS (ANSI + ISO)
+    // Виключаємо цифровий блок (Keypad 65...92), функціональні та навігаційні клавіші,
+    // які дублюють символи (наприклад, KeypadDecimal '.' у російській розкладці дає ',')
+    // і перетирають основні літерні клавіші, такі як '.' (код 47 -> 'ю').
+    private static let primaryTypingKeyCodes: [UInt16] = [
+        // Цифровий ряд (~, 1..0, -, =)
+        50, 18, 19, 20, 21, 23, 22, 26, 28, 25, 29, 27, 24,
+        // Верхній буквений ряд (Q..P, [, ], \)
+        12, 13, 14, 15, 17, 16, 32, 34, 31, 35, 33, 30, 42,
+        // Середній буквений ряд (A..L, ;, ')
+        0, 1, 2, 3, 5, 4, 38, 40, 37, 41, 39,
+        // Нижній буквений ряд (§, Z..M, ,, ., /)
+        10, 6, 7, 8, 9, 11, 45, 46, 43, 47, 44,
+        // Пробіл
+        49
+    ]
+
     // * -- Побудова таблиці (keyCode + shift) -> Character через UCKeyTranslate --
     private func buildKeyToCharTable(from layoutData: CFData) -> [UInt32: Character] {
         var table: [UInt32: Character] = [:]
@@ -155,9 +172,10 @@ public final class DynamicLayoutMapper: @unchecked Sendable {
         let maxLen = 4
         var chars = [UniChar](repeating: 0, count: maxLen)
 
-        // Скануємо всі стандартні коди клавіш macOS (0...127)
-        for keyCode in UInt16(0)...UInt16(127) {
+        // Скануємо тільки клавіші основного буквено-цифрового блоку
+        for keyCode in Self.primaryTypingKeyCodes {
             for shift in [false, true] {
+
                 var deadKeyState: UInt32 = 0
                 var actualLen = 0
                 let modifierKeyState = shift ? UInt32(shiftKey >> 8) : 0

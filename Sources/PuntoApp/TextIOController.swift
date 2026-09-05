@@ -155,7 +155,7 @@ final class TextIOController {
             if let copied = copyTextThroughPasteboard(timeout: 0.35), !copied.isEmpty {
                 // Повертаємо курсор на місце стрілкою праворуч
                 _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
-                waitForKeyboardSideEffects(timeout: 0.03)
+                waitForKeyboardSideEffects(timeout: 0.05)
 
                 if let wordResult = TextScanner.lastWord(in: copied) {
                     trace("selectAndCopyWordBeforeCursor: знайдено слово до пробілу '\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
@@ -168,7 +168,7 @@ final class TextIOController {
                 }
             } else {
                 _ = sendKeyboardShortcut(keyCode: KeyCode.rightArrow, flags: [])
-                waitForKeyboardSideEffects(timeout: 0.03)
+                waitForKeyboardSideEffects(timeout: 0.05)
             }
         }
 
@@ -222,8 +222,11 @@ final class TextIOController {
                 if range.length > 0 {
                     // Якщо range вказує на виділення, але AXSelectedText був порожній: читаємо з AXValue
                     if let fullText = stringAttribute(kAXValueAttribute as CFString, from: focusedElement) {
-                        let start = fullText.index(fullText.startIndex, offsetBy: max(0, min(fullText.count, range.location)))
-                        let end = fullText.index(fullText.startIndex, offsetBy: max(0, min(fullText.count, range.location + range.length)))
+                        let utf16 = fullText.utf16
+                        let startOffset = max(0, min(utf16.count, range.location))
+                        let endOffset = max(0, min(utf16.count, range.location + range.length))
+                        let start = String.Index(utf16Offset: startOffset, in: fullText)
+                        let end = String.Index(utf16Offset: endOffset, in: fullText)
                         let sel = String(fullText[start..<end])
                         if !sel.isEmpty {
                             trace("directAX: витягнуто виділення за range (довжина=\(sel.count))")
@@ -238,17 +241,20 @@ final class TextIOController {
                 } else if range.location > 0 {
                     // Курсор стоїть у тексті: читаємо текст до курсора і беремо останнє слово
                     if let fullText = stringAttribute(kAXValueAttribute as CFString, from: focusedElement) {
-                        let prefixIndex = fullText.index(fullText.startIndex, offsetBy: min(fullText.count, range.location))
-                        let textBeforeCursor = String(fullText[..<prefixIndex])
-                        if let wordResult = TextScanner.lastWord(in: textBeforeCursor) {
-                            let wordLoc = range.location - wordResult.trailingSpacesCount - wordResult.word.count
-                            let wordRange = CFRange(location: max(0, wordLoc), length: wordResult.word.count + wordResult.trailingSpacesCount)
-                            trace("directAX: знайдено слово перед курсором '\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+                        let utf16 = fullText.utf16
+                        let cursorOffset = max(0, min(utf16.count, range.location))
+                        let cursorIndex = String.Index(utf16Offset: cursorOffset, in: fullText)
+                        let textBeforeCursor = fullText[..<cursorIndex]
+                        if let scanned = TextScanner.scanLastWord(in: textBeforeCursor) {
+                            let wordStartLoc = fullText.utf16.distance(from: fullText.startIndex, to: scanned.wordRange.lowerBound)
+                            let wordLengthUtf16 = fullText.utf16.distance(from: scanned.wordRange.lowerBound, to: scanned.fullRange.upperBound)
+                            let wordRange = CFRange(location: wordStartLoc, length: wordLengthUtf16)
+                            trace("directAX: знайдено слово перед курсором '\(scanned.word)' trailing=\(scanned.trailingSpacesCount) range=\(wordRange.location),\(wordRange.length)")
                             return TextTarget(
-                                text: wordResult.word,
-                                trailingSpacesCount: wordResult.trailingSpacesCount,
-                                wordLength: wordResult.word.count,
-                                origin: .directAXLastWord(focusedElement, range: wordRange, wordLength: wordResult.word.count, trailingSpacesCount: wordResult.trailingSpacesCount)
+                                text: scanned.word,
+                                trailingSpacesCount: scanned.trailingSpacesCount,
+                                wordLength: scanned.word.count,
+                                origin: .directAXLastWord(focusedElement, range: wordRange, wordLength: scanned.word.count, trailingSpacesCount: scanned.trailingSpacesCount)
                             )
                         }
                     }
@@ -352,7 +358,14 @@ final class TextIOController {
             return nil
         }
 
-        guard let wordResult = TextScanner.lastWord(in: value) else {
+        // Беремо останній непорожній рядок, щоб уникнути кінцевих \n у value
+        let lines = value.components(separatedBy: .newlines)
+        guard
+            let currentLine = lines.last(where: {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }),
+            let wordResult = TextScanner.lastWord(in: currentLine)
+        else {
             trace("\(tracePrefix): lastWord не знайдено")
             return nil
         }
@@ -407,9 +420,14 @@ final class TextIOController {
                     let res = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, replacementWithSpaces as CFTypeRef)
                     if res == .success {
                         if let current = stringAttribute(kAXSelectedTextAttribute as CFString, from: element) {
-                            setSuccess = (current == replacementWithSpaces || current.isEmpty)
-                        } else {
-                            setSuccess = true
+                            setSuccess = (current == replacementWithSpaces)
+                        }
+                    }
+                    if setSuccess {
+                        // Знімаємо виділення, переміщуючи курсор у кінець вставленого слова
+                        var endRange = CFRange(location: range.location + (replacementWithSpaces as NSString).length, length: 0)
+                        if let endVal = AXValueCreate(.cfRange, &endRange) {
+                            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, endVal)
                         }
                     }
                 }
@@ -420,7 +438,7 @@ final class TextIOController {
             }
 
             if rangeSelected {
-                // Діапазон слова вже виділено в UI (Qt у Telegram/Viber)!
+                // Діапазон слова вже виділено в UI (Qt у Telegram/Viber або Chromium у Chrome/VS Code)!
                 // Cmd+V миттєво замінить виділене слово новим текстом!
                 trace("replace: слово виділено в UI через AXRange, але AXSet не змінив текст -> заміна виділення через Cmd+V")
                 return pasteReplacement(replacementWithSpaces, settleTimeout: 0.45)
@@ -469,6 +487,7 @@ final class TextIOController {
             }
             waitForKeyboardSideEffects(timeout: pollStep)
         }
+        waitForKeyboardSideEffects(timeout: 0.03)
 
         guard sendKeyboardShortcut(keyCode: KeyCode.v, flags: .maskCommand) else {
             syncMain { snapshot.restore(to: pasteboard) }

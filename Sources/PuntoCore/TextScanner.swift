@@ -1,38 +1,94 @@
 import Foundation
 
+// * -- Результат детального сканування останнього слова --
+public struct ScannedWord: Equatable, Sendable {
+    public let word: String
+    public let wordRange: Range<String.Index>
+    public let trailingSpacesCount: Int
+    public let trailingSpacesRange: Range<String.Index>
+    public let fullRange: Range<String.Index>
+
+    public init(
+        word: String,
+        wordRange: Range<String.Index>,
+        trailingSpacesCount: Int,
+        trailingSpacesRange: Range<String.Index>,
+        fullRange: Range<String.Index>
+    ) {
+        self.word = word
+        self.wordRange = wordRange
+        self.trailingSpacesCount = trailingSpacesCount
+        self.trailingSpacesRange = trailingSpacesRange
+        self.fullRange = fullRange
+    }
+}
+
 // * -- Чисті текстові функції для пошуку останнього слова і виявлення авто-копії рядка --
 public enum TextScanner {
-    // * -- Останнє слово в рядку або значенні (з кількістю кінцевих пробілів) --
-    public static func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
-        var endIndex = text.endIndex
-        while endIndex > text.startIndex {
-            let prevIndex = text.index(before: endIndex)
-            if text[prevIndex].isWhitespace || text[prevIndex].isNewline {
-                endIndex = prevIndex
+    // * -- Детальне сканування останнього слова з точними діапазонами в тексті --
+    public static func scanLastWord<T: StringProtocol>(in text: T) -> ScannedWord? {
+        var cursor = text.endIndex
+
+        // 1. Пропускаємо кінцеві переводи рядків (\r, \n), якщо вони є,
+        // щоб випадковий newline не рахувався як кінцеві пробіли для Backspace.
+        while cursor > text.startIndex {
+            let prev = text.index(before: cursor)
+            if text[prev].isNewline {
+                cursor = prev
             } else {
                 break
             }
         }
 
-        let wordText = text[..<endIndex]
-        let word: String
-        if let lastWhitespaceRange = wordText.rangeOfCharacter(
-            from: .whitespacesAndNewlines, options: .backwards)
-        {
-            word = String(wordText.suffix(from: lastWhitespaceRange.upperBound))
-        } else {
-            word = String(wordText)
+        let lineEnd = cursor
+
+        // 2. Рахуємо тільки горизонтальні пробіли/таби (trailing spaces)
+        while cursor > text.startIndex {
+            let prev = text.index(before: cursor)
+            if text[prev].isWhitespace && !text[prev].isNewline {
+                cursor = prev
+            } else {
+                break
+            }
         }
 
+        let wordEnd = cursor
+        let trailingSpacesRange = wordEnd..<lineEnd
+        let trailingSpacesCount = text.distance(from: wordEnd, to: lineEnd)
+
+        let wordPrefix = text[..<wordEnd]
+        let wordStart: String.Index
+        if let lastWhitespace = wordPrefix.rangeOfCharacter(
+            from: .whitespacesAndNewlines, options: .backwards)
+        {
+            wordStart = lastWhitespace.upperBound
+        } else {
+            wordStart = text.startIndex
+        }
+
+        guard wordStart < wordEnd else {
+            return nil
+        }
+
+        let word = String(text[wordStart..<wordEnd])
         let wordLength = (word as NSString).length
         guard wordLength > 0, wordLength <= 300 else {
             return nil
         }
 
-        return (
+        return ScannedWord(
             word: word,
-            trailingSpacesCount: text.distance(from: endIndex, to: text.endIndex)
+            wordRange: wordStart..<wordEnd,
+            trailingSpacesCount: trailingSpacesCount,
+            trailingSpacesRange: trailingSpacesRange,
+            fullRange: wordStart..<lineEnd
         )
+    }
+
+    // * -- Останнє слово в рядку або значенні (з кількістю кінцевих пробілів) --
+    public static func lastWord(in text: String) -> (word: String, trailingSpacesCount: Int)? {
+        guard let scanned = scanLastWord(in: text) else { return nil }
+        return (word: scanned.word, trailingSpacesCount: scanned.trailingSpacesCount)
     }
 
     // * -- Чи схоже скопійоване на автоматичну копію цілого рядка без виділення --
@@ -41,3 +97,4 @@ public enum TextScanner {
         return normalized.hasSuffix("\n")
     }
 }
+
