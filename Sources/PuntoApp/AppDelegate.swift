@@ -106,7 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let launchTitle = state.settings.launchAtLogin ? t(.disableLaunchAtLogin) : t(.launchAtLogin)
         menu.addItem(makeItem(title: launchTitle, action: #selector(toggleLaunchAtLogin)))
         menu.addItem(makeItem(title: t(.permissions), action: #selector(openPermissions)))
-        menu.addItem(makeItem(title: t(.copyDiagnostics), action: #selector(copyDiagnosticsReport)))
         menu.addItem(.separator())
         menu.addItem(versionAndBuildMenuItem())
         menu.addItem(makeItem(title: t(.quit), action: #selector(quit)))
@@ -298,15 +297,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if result == .success, let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() {
                 let el = (focusedValue as! AXUIElement)
                 var roleRef: CFTypeRef?
-                var titleRef: CFTypeRef?
-                var descRef: CFTypeRef?
                 AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef)
-                AXUIElementCopyAttributeValue(el, kAXTitleAttribute as CFString, &titleRef)
-                AXUIElementCopyAttributeValue(el, kAXDescriptionAttribute as CFString, &descRef)
                 let roleStr = roleRef as? String ?? "nil"
-                let titleStr = titleRef as? String ?? "nil"
-                let descStr = descRef as? String ?? "nil"
-                rawLog("performTextCommand: focusedEl=yes role=\(roleStr) title=\(titleStr) desc=\(descStr)")
+                rawLog("performTextCommand: focusedEl=yes role=\(roleStr)")
                 return el
             }
 
@@ -331,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            rawLog("[AppDelegate] readTarget ok: text='\(target.text.prefix(50))'")
+            rawLog("[AppDelegate] readTarget ok: length=\(target.text.count)")
 
             // (c) Виконуємо перетворення і пропускаємо результат без змін.
             let result = command(target.text)
@@ -494,26 +487,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // * -- Вихід із застосунку --
     @objc private func quit() {
         NSApp.terminate(nil)
-    }
-
-    // * -- Копіювання діагностичного звіту в буфер обміну --
-    @objc private func copyDiagnosticsReport() {
-        let activeLangs = inputSources.activeLanguages().map { $0.rawValue }.joined(separator: ", ")
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2.0"
-        let frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
-        let axTrusted = Diagnostics.accessibilityTrusted(prompt: false)
-        let report = """
-        === FreePunto Diagnostics Report ===
-        Version: \(version)
-        Accessibility Trusted: \(axTrusted)
-        Frontmost App: \(frontApp)
-        Active Layouts: \(activeLangs)
-        Timestamp: \(ISO8601DateFormatter().string(from: Date()))
-
-        Recent Activity:
-        \(DiagnosticsLog.shared.recentLogs())
-        """
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(report, forType: .string)
     }
 }

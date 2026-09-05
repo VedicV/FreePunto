@@ -1,56 +1,41 @@
 import Foundation
 import os.log
 
-// * -- Безпечне внутрішнє логування (без створення файлів на робочому столі) --
+// * -- Безпечне внутрішнє логування (без збереження на диск за замовчуванням) --
 final class DiagnosticsLog: @unchecked Sendable {
     static let shared = DiagnosticsLog()
 
-    private let lock = NSLock()
-    private var buffer: [String] = []
-    private let maxEntries = 120
     private let logger = Logger(subsystem: "com.freepunto.FreePunto", category: "Diagnostics")
     private let customLogFile: URL? = {
-        if let path = ProcessInfo.processInfo.environment["FREEPUNTO_LOG_FILE"] {
-            return URL(fileURLWithPath: path)
+        guard let path = ProcessInfo.processInfo.environment["FREEPUNTO_LOG_FILE"], !path.isEmpty else {
+            return nil
         }
-        return URL(fileURLWithPath: "/tmp/freepunto.log")
+        return URL(fileURLWithPath: path)
     }()
 
     private init() {}
 
     func log(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let formatted = "\(timestamp) \(message)"
-
-        lock.lock()
-        buffer.append(formatted)
-        if buffer.count > maxEntries {
-            buffer.removeFirst(buffer.count - maxEntries)
-        }
-        lock.unlock()
-
-        logger.debug("\(message, privacy: .public)")
+        logger.debug("\(message, privacy: .private)")
 
         // Записуємо у файл ТІЛЬКИ якщо явно задано змінну FREEPUNTO_LOG_FILE
-        if let fileURL = customLogFile, let data = "\(formatted)\n".data(using: .utf8) {
-            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                _ = try? data.write(to: fileURL, options: .atomic)
-            } else if let handle = try? FileHandle(forWritingTo: fileURL) {
-                _ = try? handle.seekToEnd()
-                _ = try? handle.write(contentsOf: data)
-                _ = try? handle.close()
+        if let fileURL = customLogFile {
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let formatted = "\(timestamp) \(message)\n"
+            if let data = formatted.data(using: .utf8) {
+                if !FileManager.default.fileExists(atPath: fileURL.path) {
+                    _ = try? data.write(to: fileURL, options: .atomic)
+                } else if let handle = try? FileHandle(forWritingTo: fileURL) {
+                    _ = try? handle.seekToEnd()
+                    _ = try? handle.write(contentsOf: data)
+                    _ = try? handle.close()
+                }
             }
         }
     }
-
-    func recentLogs() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        return buffer.joined(separator: "\n")
-    }
 }
 
-// * -- Загальний виклик для логування подій у системний журнал та буфер діагностики --
+// * -- Загальний виклик для логування подій у системний журнал --
 func rawLog(_ message: String) {
     DiagnosticsLog.shared.log(message)
 }

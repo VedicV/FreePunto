@@ -110,7 +110,7 @@ final class TextIOController {
             if context.appKind == .codeEditor && TextScanner.looksLikeAutomaticLineCopy(copiedText) {
                 // У VS Code / Antigravity натискання Cmd+C без виділення копіює весь рядок
                 if let wordResult = TextScanner.lastWord(in: copiedText) {
-                    trace("readTarget: codeEditor line-copy fallback -> '\(wordResult.word)'")
+                    trace("readTarget: codeEditor line-copy fallback -> len=\(wordResult.word.count)")
                     return TextTarget(
                         text: wordResult.word,
                         trailingSpacesCount: 0,
@@ -158,7 +158,7 @@ final class TextIOController {
                 waitForKeyboardSideEffects(timeout: 0.05)
 
                 if let wordResult = TextScanner.lastWord(in: copied) {
-                    trace("selectAndCopyWordBeforeCursor: знайдено слово до пробілу '\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+                    trace("selectAndCopyWordBeforeCursor: знайдено слово до пробілу len=\(wordResult.word.count) trailing=\(wordResult.trailingSpacesCount)")
                     return TextTarget(
                         text: wordResult.word,
                         trailingSpacesCount: wordResult.trailingSpacesCount,
@@ -182,7 +182,7 @@ final class TextIOController {
         if let copied = copyTextThroughPasteboard(timeout: 0.35), !copied.isEmpty {
             let trimmed = copied.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                trace("selectAndCopyWordBeforeCursor: успішно виділено і скопійовано '\(copied)'")
+                trace("selectAndCopyWordBeforeCursor: успішно виділено і скопійовано len=\(copied.count)")
                 return TextTarget(
                     text: copied,
                     trailingSpacesCount: 0,
@@ -249,7 +249,7 @@ final class TextIOController {
                             let wordStartLoc = fullText.utf16.distance(from: fullText.startIndex, to: scanned.wordRange.lowerBound)
                             let wordLengthUtf16 = fullText.utf16.distance(from: scanned.wordRange.lowerBound, to: scanned.fullRange.upperBound)
                             let wordRange = CFRange(location: wordStartLoc, length: wordLengthUtf16)
-                            trace("directAX: знайдено слово перед курсором '\(scanned.word)' trailing=\(scanned.trailingSpacesCount) range=\(wordRange.location),\(wordRange.length)")
+                            trace("directAX: знайдено слово перед курсором len=\(scanned.word.count) trailing=\(scanned.trailingSpacesCount) range=\(wordRange.location),\(wordRange.length)")
                             return TextTarget(
                                 text: scanned.word,
                                 trailingSpacesCount: scanned.trailingSpacesCount,
@@ -274,7 +274,7 @@ final class TextIOController {
         if let focusedElement,
            let selText = stringAttribute(kAXSelectedTextAttribute as CFString, from: focusedElement),
            !selText.isEmpty {
-            trace("terminal: знайдено AXSelectedText '\(selText)'")
+            trace("terminal: знайдено AXSelectedText (довжина=\(selText.count))")
             return TextTarget(
                 text: selText,
                 trailingSpacesCount: 0,
@@ -284,7 +284,7 @@ final class TextIOController {
         }
 
         if let copied = copyTextThroughPasteboard(timeout: 0.15), !copied.isEmpty, !TextScanner.looksLikeAutomaticLineCopy(copied) {
-            trace("terminal: скопійовано виділення через Cmd+C '\(copied)'")
+            trace("terminal: скопійовано виділення через Cmd+C (довжина=\(copied.count))")
             return TextTarget(
                 text: copied,
                 trailingSpacesCount: 0,
@@ -331,7 +331,7 @@ final class TextIOController {
             return nil
         }
 
-        trace("terminal: AXValue слово='\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+        trace("terminal: AXValue len=\(wordResult.word.count) trailing=\(wordResult.trailingSpacesCount)")
         return TextTarget(
             text: wordResult.word,
             trailingSpacesCount: wordResult.trailingSpacesCount,
@@ -370,7 +370,7 @@ final class TextIOController {
             return nil
         }
 
-        trace("\(tracePrefix): AXValue слово='\(wordResult.word)' trailing=\(wordResult.trailingSpacesCount)")
+        trace("\(tracePrefix): AXValue len=\(wordResult.word.count) trailing=\(wordResult.trailingSpacesCount)")
         return TextTarget(
             text: wordResult.word,
             trailingSpacesCount: wordResult.trailingSpacesCount,

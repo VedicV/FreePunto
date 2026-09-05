@@ -46,7 +46,6 @@ enum AppText {
         case normalizeCapsLock
         case sequentialMode
         case fixedTargetMode
-        case copyDiagnostics
     }
 
     // * -- Текст за ключем --
@@ -132,7 +131,6 @@ enum AppText {
         .normalizeCapsLock: "Исправить Caps Lock",
         .sequentialMode: "По кругу",
         .fixedTargetMode: "Фиксированная цель",
-        .copyDiagnostics: "Скопировать диагностический отчет",
     ]
 
     // * -- Локалізований словник для української мови -- 
@@ -182,7 +180,6 @@ enum AppText {
         .normalizeCapsLock: "Виправити Caps Lock",
         .sequentialMode: "По колу",
         .fixedTargetMode: "Фіксована ціль",
-        .copyDiagnostics: "Скопіювати діагностичний звіт",
     ]
 
     // * -- Локалізований словник для англійської мови -- 
@@ -232,6 +229,5 @@ enum AppText {
         .normalizeCapsLock: "Normalize Caps Lock",
         .sequentialMode: "Sequential",
         .fixedTargetMode: "Fixed target",
-        .copyDiagnostics: "Copy Diagnostics Report",
     ]
 }
