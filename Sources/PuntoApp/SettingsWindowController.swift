@@ -5,13 +5,14 @@ import PuntoCore
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let state: AppState
     private var recordingMonitor: Any?
+    private weak var activeRecordingButton: NSButton?
     private var sleeves: [ClosureSleeve] = []
 
     // * -- Створення вікна --
     init(state: AppState) {
         self.state = state
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 590),
+            contentRect: NSRect(x: 0, y: 0, width: 710, height: 530),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -36,13 +37,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stopRecording()
         sleeves = []
         window?.title = t(.settingsTitle)
+        window?.setContentSize(NSSize(width: 710, height: 530))
 
         // Створюємо стек для розміщення елементів налаштувань.
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        stack.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         // Основні налаштування застосунку.
@@ -113,7 +115,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
         ))
 
-        stack.addArrangedSubview(separator())
+        addSeparator(to: stack)
        
         // Налаштування гарячих клавіш.
         stack.addArrangedSubview(makeMainHotKeyRow())
@@ -133,8 +135,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             update: { [weak self] hotKey in self?.state.settings.pauseHotKey = hotKey }
         ))
 
-    // Налаштування доступів macOS.
-        stack.addArrangedSubview(separator())
+        // Налаштування доступів macOS.
+        addSeparator(to: stack)
         // Доступи macOS.
         let permissions = NSButton(title: t(.openPermissions), target: self, action: #selector(openPermissions))
         stack.addArrangedSubview(permissions)
@@ -220,26 +222,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.addArrangedSubview(label(t(.mainHotkey)))
 
         let valueLabel = NSTextField(labelWithString: state.settings.mainHotKey.displayTitle)
-        valueLabel.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        valueLabel.widthAnchor.constraint(equalToConstant: 140).isActive = true
         row.addArrangedSubview(valueLabel)
 
+        let restore = NSButton(title: t(.restoreControl), target: nil, action: nil)
+        restore.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        restore.isEnabled = state.settings.mainHotKey != .singleControl
+
         let record = NSButton(title: t(.record), target: nil, action: nil)
-        let recordSleeve = retainSleeve { [weak self, weak record, weak valueLabel] in
+        record.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        let recordSleeve = retainSleeve { [weak self, weak record, weak valueLabel, weak restore] in
             guard let self, let record, let valueLabel else { return }
             self.startRecording(button: record) { hotKey in
                 valueLabel.stringValue = hotKey.displayTitle
                 self.state.settings.mainHotKey = hotKey
+                restore?.isEnabled = (hotKey != .singleControl)
             }
         }
         record.target = recordSleeve
         record.action = #selector(ClosureSleeve.invoke)
         row.addArrangedSubview(record)
 
-        let restore = NSButton(title: t(.restoreControl), target: nil, action: nil)
-        let restoreSleeve = retainSleeve { [weak self, weak valueLabel] in
+        let restoreSleeve = retainSleeve { [weak self, weak valueLabel, weak restore] in
             guard let self else { return }
             self.state.settings.mainHotKey = .singleControl
             valueLabel?.stringValue = self.state.settings.mainHotKey.displayTitle
+            restore?.isEnabled = false
         }
         restore.target = restoreSleeve
         restore.action = #selector(ClosureSleeve.invoke)
@@ -254,10 +262,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.addArrangedSubview(label(title))
 
         let valueLabel = NSTextField(labelWithString: hotKey.displayTitle)
-        valueLabel.widthAnchor.constraint(equalToConstant: 170).isActive = true
+        valueLabel.widthAnchor.constraint(equalToConstant: 140).isActive = true
         row.addArrangedSubview(valueLabel)
 
         let record = NSButton(title: t(.record), target: nil, action: nil)
+        record.widthAnchor.constraint(equalToConstant: 150).isActive = true
         let sleeve = retainSleeve { [weak self, weak record, weak valueLabel] in
             guard let self, let record, let valueLabel else { return }
             self.startRecording(button: record) { hotKey in
@@ -274,12 +283,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // Локальний запис наступного keyDown для налаштування hotkey.
     private func startRecording(button: NSButton, update: @escaping (HotKey) -> Void) {
         stopRecording()
+        activeRecordingButton = button
         button.title = t(.pressKeys)
         recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak button] event in
             let modifiers = HotKeyModifiers(modifierFlags: event.modifierFlags)
             let hotKey = HotKey.combination(keyCode: Int(event.keyCode), modifiers: modifiers)
             update(hotKey)
             button?.title = self?.t(.record) ?? "Record"
+            self?.activeRecordingButton = nil
             self?.stopRecording()
             return nil
         }
@@ -290,6 +301,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             NSEvent.removeMonitor(recordingMonitor)
         }
         recordingMonitor = nil
+        activeRecordingButton?.title = t(.record)
+        activeRecordingButton = nil
     }
 
     // MARK: - NSWindowDelegate
@@ -313,22 +326,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 10
+        row.spacing = 12
         return row
     }
 
-// Допоміжні методи для створення елементів інтерфейсу.
+    // Допоміжні методи для створення елементів інтерфейсу.
     private func label(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
-        label.widthAnchor.constraint(equalToConstant: 210).isActive = true
+        label.widthAnchor.constraint(equalToConstant: 185).isActive = true
         return label
     }
 
-    private func separator() -> NSBox {
+    private func addSeparator(to stack: NSStackView) {
         let box = NSBox()
         box.boxType = .separator
-        box.widthAnchor.constraint(equalToConstant: 520).isActive = true
-        return box
+        box.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(box)
+        box.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
     }
 
     private func t(_ key: AppText.Key) -> String {
