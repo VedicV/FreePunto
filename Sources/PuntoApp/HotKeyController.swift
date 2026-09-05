@@ -106,10 +106,20 @@ final class HotKeyController {
 
     // * -- Обробка події клавіатури --
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // Відновлюємо tap після системного вимкнення.
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        // Відновлюємо tap після системного таймауту обробки подій.
+        if type == .tapDisabledByTimeout {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Якщо tap вимкнено користувачем або системою (наприклад, відкликано дозвіл TCC),
+        // у жодному разі не викликаємо tapEnable, щоб не спричинити дедлок із WindowServer.
+        if type == .tapDisabledByUserInput {
+            rawLog("HotKeyController: tap вимкнено користувачем або системою (tapDisabledByUserInput). Зупиняємо перехоплювач.")
+            DispatchQueue.main.async { [weak self] in
+                self?.stop()
             }
             return Unmanaged.passUnretained(event)
         }

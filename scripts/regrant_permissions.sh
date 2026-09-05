@@ -5,7 +5,22 @@ BUNDLE_ID="dev.freepunto.FreePunto"
 
 echo "=== FreePunto Permissions Reset & Setup ==="
 echo "1. Зупиняємо запущений FreePunto..."
+osascript -e 'quit app "FreePunto"' 2>/dev/null || true
 pkill -x FreePunto 2>/dev/null || true
+
+# Обов'язково чекаємо, поки процес повністю завершиться, щоб уникнути дедлоку WindowServer
+for _ in {1..20}; do
+    if ! pgrep -x FreePunto >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.2
+done
+
+if pgrep -x FreePunto >/dev/null 2>&1; then
+    echo "   Примусово зупиняємо процес..."
+    pkill -9 -x FreePunto 2>/dev/null || true
+    sleep 0.5
+fi
 
 echo "2. Скидаємо старі TCC-дозволи для $BUNDLE_ID..."
 tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true

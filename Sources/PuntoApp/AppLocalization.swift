@@ -40,6 +40,9 @@ enum AppText {
         case permissionsTitle
         case permissionsEnabledDetail
         case permissionsMissingDetail
+        case openAccessibility
+        case openInputMonitoring
+        case close
         case lowercase
         case sentenceCase
         case titleCase
@@ -122,9 +125,12 @@ enum AppText {
         .launchAtLoginUnavailable: "Не удалось включить запуск при входе",
         .permissionsTitle: "Разрешения FreePunto",
         .permissionsEnabledDetail:
-            "Accessibility включен. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
+            "Доступность (Accessibility) включена.\n\nЧтобы удалить FreePunto перед установкой новой версии или сбросить доступ, откройте Системные настройки и удалите приложение из списка (кнопкой «-»).\n\nДля глобальных клавиш также может потребоваться Мониторинг ввода.",
         .permissionsMissingDetail:
-            "Включите Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальных клавиш и одиночного Control может также понадобиться Input Monitoring.",
+            "Включите доступность для FreePunto в Системных настройках (Конфиденциальность и безопасность -> Универсальный доступ).\n\nДля глобальных клавиш также может потребоваться Мониторинг ввода.",
+        .openAccessibility: "Открыть «Универсальный доступ»",
+        .openInputMonitoring: "Открыть «Мониторинг ввода»",
+        .close: "Закрыть",
         .lowercase: "Нижний регистр",
         .sentenceCase: "Регистр предложения",
         .titleCase: "Первые буквы слов",
@@ -171,9 +177,12 @@ enum AppText {
         .launchAtLoginUnavailable: "Не вдалося ввімкнути запуск при вході",
         .permissionsTitle: "Дозволи FreePunto",
         .permissionsEnabledDetail:
-            "Accessibility увімкнено. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
+            "Доступність (Accessibility) увімкнено.\n\nЩоб видалити FreePunto перед встановленням нової версії або скинути доступ, відкрийте Системні параметри та видаліть застосунок зі списку (кнопкою «-»).\n\nДля глобальних клавіш також може знадобитися Моніторинг вводу.",
         .permissionsMissingDetail:
-            "Увімкніть Accessibility для FreePunto в System Settings -> Privacy & Security -> Accessibility. Для глобальних клавіш і одиночного Control також може знадобитися Input Monitoring.",
+            "Увімкніть доступність для FreePunto у Системних параметрах (Приватність і безпека -> Доступність).\n\nДля глобальних клавіш також може знадобитися Моніторинг вводу.",
+        .openAccessibility: "Відкрити «Доступність»",
+        .openInputMonitoring: "Відкрити «Моніторинг вводу»",
+        .close: "Закрити",
         .lowercase: "Нижній регістр",
         .sentenceCase: "Регістр речення",
         .titleCase: "Перші літери слів",
@@ -220,9 +229,12 @@ enum AppText {
         .launchAtLoginUnavailable: "Launch at login is unavailable",
         .permissionsTitle: "FreePunto permissions",
         .permissionsEnabledDetail:
-            "Accessibility permission is enabled. Input Monitoring may still be required for global hotkeys and single Control.",
+            "Accessibility permission is enabled.\n\nTo remove FreePunto before installing a new version or reset permissions, open System Settings and remove the app from the list (using the '-' button).\n\nInput Monitoring may also be required for global hotkeys.",
         .permissionsMissingDetail:
-            "Enable Accessibility for FreePunto in System Settings -> Privacy & Security -> Accessibility. Input Monitoring may also be required for global hotkeys and single Control.",
+            "Enable Accessibility for FreePunto in System Settings (Privacy & Security -> Accessibility).\n\nInput Monitoring may also be required for global hotkeys.",
+        .openAccessibility: "Open Accessibility",
+        .openInputMonitoring: "Open Input Monitoring",
+        .close: "Close",
         .lowercase: "Lowercase",
         .sentenceCase: "Sentence case",
         .titleCase: "Title Case",
