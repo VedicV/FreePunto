@@ -190,7 +190,7 @@ final class HotKeyController {
         let controlOnly = flags == .maskControl
         let noModifiers = flags.isEmpty
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let isControlKey = keyCode == 59 || keyCode == 62 || keyCode == 57 || controlOnly
+        let isControlKey = keyCode == 59 || keyCode == 62
 
         if controlOnly && isControlKey {
             singleControlCandidate = true
@@ -208,6 +208,12 @@ final class HotKeyController {
         guard hotKey.kind == .keyCombination,
               let keyCode = hotKey.keyCode,
               Int(event.getIntegerValueField(.keyboardEventKeycode)) == keyCode else {
+            return false
+        }
+
+        // Захист: якщо комбінація не має модифікаторів і не є F-клавішею, не перехоплюємо її
+        let isFunctionKey = (keyCode >= 120 && keyCode <= 122) || (keyCode >= 96 && keyCode <= 101) || (keyCode >= 109 && keyCode <= 111) || keyCode == 103 || keyCode == 118
+        if hotKey.modifiers.isEmpty && !isFunctionKey {
             return false
         }
 

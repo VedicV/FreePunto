@@ -20,6 +20,7 @@ enum AppText {
         case permissions
         case quit
         case version
+        case testVersion
         case enabled
         case mainHotkey
         case restoreControl
@@ -105,6 +106,7 @@ enum AppText {
         .permissions: "Разрешения...",
         .quit: "Выйти из FreePunto",
         .version: "Версия",
+        .testVersion: "тестовая версия",
         .enabled: "Включено",
         .mainHotkey: "Смена раскладки",
         .restoreControl: "Вернуть Control",
@@ -157,6 +159,7 @@ enum AppText {
         .permissions: "Дозволи...",
         .quit: "Вийти з FreePunto",
         .version: "Версія",
+        .testVersion: "тестова версія",
         .enabled: "Увімкнено",
         .mainHotkey: "Зміна розкладки",
         .restoreControl: "Повернути Control",
@@ -209,6 +212,7 @@ enum AppText {
         .permissions: "Permissions...",
         .quit: "Quit FreePunto",
         .version: "Version",
+        .testVersion: "test version",
         .enabled: "Enabled",
         .mainHotkey: "Keyboard layout switch",
         .restoreControl: "Restore Control",

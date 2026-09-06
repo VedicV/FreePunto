@@ -19,6 +19,26 @@
             "target": "FreePunto",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release FreePunto"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Punto}",
+            "name": "Debug PuntoCoreTestsRunner",
+            "target": "PuntoCoreTestsRunner",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug PuntoCoreTestsRunner"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Punto}",
+            "name": "Release PuntoCoreTestsRunner",
+            "target": "PuntoCoreTestsRunner",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release PuntoCoreTestsRunner"
         }
     ]
 }

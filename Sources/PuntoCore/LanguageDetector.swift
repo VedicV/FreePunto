@@ -36,6 +36,14 @@ public enum LanguageDetector {
             return .ukrainian
         }
 
+        if russianSpecific > ukrainianSpecific {
+            return .russian
+        }
+
+        if fallback == .ukrainian || fallback == .russian {
+            return fallback
+        }
+
         return .russian
     }
 

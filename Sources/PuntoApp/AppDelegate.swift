@@ -13,7 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let commandQueue = DispatchQueue(label: "com.freepunto.command")
     // * -- Захист від перекритих команд: якщо команда вже виконується, нову ігноруємо --
     private var isRunningCommand = false
+    private var isProgrammaticLayoutChange = false
     private var permissionTimer: Timer?
+
+    private func resetConversionContext() {
+        state.engine.resetContext()
+    }
 
     // * -- Запуск застосунку і підключення системних обробників --
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -43,16 +48,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.checkAndStartHotKeysIfNeeded()
         }
 
-        if !Diagnostics.accessibilityTrusted(prompt: false) {
+        if !Diagnostics.accessibilityTrusted(prompt: true) {
             rawLog("accessibility NOT TRUSTED — очікуємо надання дозволу в Системних параметрах")
             Diagnostics.openAccessibilitySettings()
         }
+
+        // Спостереження за зміною активної системної розкладки в macOS
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardLayoutDidChange),
+            name: NSTextInputContext.keyboardSelectionDidChangeNotification,
+            object: nil
+        )
+
+        // Спостереження за перемиканням активного застосунку для скидання застарілого контексту перетворення
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(activeApplicationDidChange),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
     }
 
     // * -- Зупинка глобальних обробників --
     func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         permissionTimer?.invalidate()
         hotKeys?.stop()
+    }
+
+    @objc private func keyboardLayoutDidChange() {
+        rawLog("[AppDelegate] keyboardLayoutDidChange (programmatic=\(isProgrammaticLayoutChange))")
+        DynamicLayoutMapper.shared.refreshTables()
+        if !isProgrammaticLayoutChange {
+            resetConversionContext()
+        }
+        rebuildMenu()
+    }
+
+    @objc private func activeApplicationDidChange() {
+        rawLog("[AppDelegate] activeApplicationDidChange -> resetContext")
+        resetConversionContext()
     }
 
     // * -- Перевірка та автоматичний запуск гарячих клавіш --
@@ -73,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // * -- Застосування змінених налаштувань --
     private func refreshAfterSettingsChange() {
+        resetConversionContext()
         checkAndStartHotKeysIfNeeded()
         rebuildMenu()
     }
@@ -128,13 +166,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Tooltip залишаємо текстовим, щоб на hover був зрозумілий поточний стан.
     private func statusTooltip() -> String {
+        let isTest = isTestBuild()
+        let prefix = isTest ? "FreePunto [TEST]: " : "FreePunto: "
         guard state.settings.isEnabled else {
-            return "FreePunto: PAUSE"
+            return "\(prefix)PAUSE"
         }
 
         let activeLangs = inputSources.activeLanguages()
         let hint = state.engine.nextLayoutLanguageHint(settings: state.settings, enabledLanguages: activeLangs).statusTitle
-        return state.settings.switchingMode == .fixedTarget ? "FreePunto: \(hint)*" : "FreePunto: \(hint)"
+        return state.settings.switchingMode == .fixedTarget ? "\(prefix)\(hint)*" : "\(prefix)\(hint)"
     }
 
 // * -- Допоміжні методи для створення меню і обробки команд --
@@ -231,9 +271,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-// * -- Пункт меню з версією і часом збірки --
+    // * -- Ознака тестової збірки --
+    private func isTestBuild() -> Bool {
+        if let explicit = Bundle.main.infoDictionary?["FreePuntoIsTestBuild"] as? Bool {
+            return explicit
+        }
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let lower = version.lowercased()
+        return lower.contains("-") || lower.contains("test") || lower.contains("beta") || lower.contains("dev") || lower.contains("alpha") || lower.contains("rc")
+    }
+
+    // * -- Пункт меню з версією і часом збірки --
     private func versionAndBuildMenuItem() -> NSMenuItem {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let isTest = isTestBuild()
+
         let buildTimeStr: String
         if let path = Bundle.main.executablePath,
            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
@@ -244,7 +296,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             buildTimeStr = "--:--"
         }
-        let item = NSMenuItem(title: "\(t(.version)) \(version) (\(buildTimeStr))", action: nil, keyEquivalent: "")
+        let title: String
+        if isTest {
+            title = "\(t(.version)) \(version) (\(t(.testVersion)), \(buildTimeStr))"
+        } else {
+            title = "\(t(.version)) \(version) (\(buildTimeStr))"
+        }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
     }
@@ -314,8 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rawLog("[AppDelegate] commandQueue block START, bundle=\(bundleID ?? "nil") hasAX=\(hasAX)")
 
             // (b) Читаємо виділення або попереднє слово на фоні.
-            let target = self.textIO.readTarget(bundleIdentifier: bundleID, hasAccessibility: hasAX, focusedElement: focusedEl)
-            guard let target else {
+            guard let target = self.textIO.readTarget(bundleIdentifier: bundleID, hasAccessibility: hasAX, focusedElement: focusedEl) else {
                 rawLog("[AppDelegate] readTarget повернув nil → beep")
                 DispatchQueue.main.async {
                     NSSound.beep()
@@ -328,8 +385,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             // (c) Виконуємо перетворення і пропускаємо результат без змін.
             let result = command(target.text)
+            rawLog("[AppDelegate] transform: len=\(result.originalText.count) replacementLen=\(result.replacementText.count) src=\(result.sourceLanguage?.rawValue ?? "nil") tgt=\(result.targetLanguage?.rawValue ?? "nil") didChange=\(result.didChange)")
             guard result.didChange else {
                 rawLog("[AppDelegate] transform didChange=false → beep")
+                self.state.engine.discardPendingConversion()
                 DispatchQueue.main.async {
                     NSSound.beep()
                     self.isRunningCommand = false
@@ -338,16 +397,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // (d) Замінюємо поточний вибір через системне введення, якщо текст змінився.
-            if result.originalText != result.replacementText {
-                let ok = self.textIO.replace(target, with: result.replacementText)
-                guard ok else {
-                    rawLog("[AppDelegate] replace повернув false → showError")
+            if result.requiresTextReplacement {
+                let outcome = self.textIO.replace(target, with: result.replacementText)
+                switch outcome {
+                case .successVerified:
+                    rawLog("[AppDelegate] replace outcome: successVerified → committing conversion")
+                    self.state.engine.commitPendingConversion()
+                case .deliveredUnconfirmedAX:
+                    rawLog("[AppDelegate] replace outcome: deliveredUnconfirmedAX → delivered, AX unconfirmed, discard pending without error")
+                    self.state.engine.discardPendingConversion()
+                case .failed:
+                    rawLog("[AppDelegate] replace outcome: failed → showError")
+                    self.state.engine.discardPendingConversion()
                     DispatchQueue.main.async {
                         Diagnostics.showError(self.t(.couldNotReplaceText), language: self.state.settings.interfaceLanguage)
                         self.isRunningCommand = false
                     }
                     return
                 }
+            } else if result.didChange {
+                rawLog("[AppDelegate] text did not change but language changed (original == replacement) → committing conversion")
+                self.state.engine.commitPendingConversion()
             }
 
             // (e) Синхронізуємо macOS input source і оновлюємо меню на головному потоці.
@@ -355,8 +425,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // щоб перемикання розкладки не скидало активне виділення у браузерах.
             DispatchQueue.main.async {
                 if let targetLanguage = result.targetLanguage {
+                    self.isProgrammaticLayoutChange = true
                     if !self.inputSources.selectInputSource(for: targetLanguage) {
                         rawLog("[AppDelegate] Warning: could not switch macOS input source to \(targetLanguage.title)")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        self.isProgrammaticLayoutChange = false
                     }
                 }
 
@@ -375,8 +449,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func performLayoutConversion() {
         rawLog("[AppDelegate] performLayoutConversion")
         let activeLangs = inputSources.activeLanguages()
+        let currentLang = inputSources.currentLanguage()
+        let settingsSnapshot = state.settings
         performTextCommand { [state] text in
-            state.engine.convertLayout(text, settings: state.settings, enabledLanguages: activeLangs)
+            state.engine.convertLayout(
+                text,
+                settings: settingsSnapshot,
+                enabledLanguages: activeLangs,
+                currentLanguage: currentLang,
+                autoCommit: false
+            )
         }
     }
 
@@ -386,8 +468,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performCaseConversion() {
+        let mode = state.settings.caseMode
         performTextCommand { [state] text in
-            state.engine.convertCase(text, mode: state.settings.caseMode)
+            state.engine.convertCase(text, mode: mode)
         }
     }
 
@@ -396,11 +479,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         performTransliteration()
     }
 
-// * -- Команда транслітерації --
      // Використовуємо налаштування цілі транслітерації для визначення мови результату.
     private func performTransliteration() {
+        let targetLanguage = state.settings.transliterationTargetLanguage
         performTextCommand { [state] text in
-            state.engine.transliterate(text, targetLanguage: state.settings.transliterationTargetLanguage)
+            state.engine.transliterate(text, targetLanguage: targetLanguage)
         }
     }
 
@@ -416,7 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         state.settings.switchingMode = mode
-        state.engine.resetContext()
+        resetConversionContext()
     }
 
     // * -- Налаштування фіксованої цілі --
@@ -426,7 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         state.settings.fixedTargetLanguage = language
-        state.engine.resetContext()
+        resetConversionContext()
     }
 
     // * -- Налаштування цілі транслітерації --

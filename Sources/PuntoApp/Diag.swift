@@ -7,10 +7,10 @@ final class DiagnosticsLog: @unchecked Sendable {
 
     private let logger = Logger(subsystem: "com.freepunto.FreePunto", category: "Diagnostics")
     private let customLogFile: URL? = {
-        guard let path = ProcessInfo.processInfo.environment["FREEPUNTO_LOG_FILE"], !path.isEmpty else {
-            return nil
+        if let path = ProcessInfo.processInfo.environment["FREEPUNTO_LOG_FILE"], !path.isEmpty {
+            return URL(fileURLWithPath: path)
         }
-        return URL(fileURLWithPath: path)
+        return URL(fileURLWithPath: "/tmp/freepunto_debug.log")
     }()
 
     private init() {}

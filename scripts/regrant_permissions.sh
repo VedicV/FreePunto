@@ -22,8 +22,17 @@ if pgrep -x FreePunto >/dev/null 2>&1; then
     sleep 0.5
 fi
 
+if pgrep -x FreePunto >/dev/null 2>&1; then
+    echo "Помилка: не вдалося зупинити FreePunto. Завершіть його через Activity Monitor і спробуйте знову." >&2
+    exit 1
+fi
+
 echo "2. Скидаємо старі TCC-дозволи для $BUNDLE_ID..."
-tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
+if tccutil reset Accessibility "$BUNDLE_ID"; then
+    echo "   Accessibility успішно скинуто через tccutil."
+else
+    echo "   Зауваження: tccutil не зміг скинути Accessibility (можливо, запис ще не існує в базі TCC)."
+fi
 tccutil reset ListenEvent "$BUNDLE_ID" 2>/dev/null || true
 tccutil reset PostEvent "$BUNDLE_ID" 2>/dev/null || true
 

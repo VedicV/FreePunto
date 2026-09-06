@@ -233,6 +233,21 @@ public struct PuntoSettings: Codable, Sendable, Equatable {
     public static let `default` = PuntoSettings()
 }
 
+// * -- Результат виконання заміни тексту в цільовому застосунку --
+public enum ReplaceOutcome: Equatable, Sendable {
+    case successVerified          // Текст замінено і підтверджено через AX або платформений механізм
+    case deliveredUnconfirmedAX   // Події вставки доставлено, але AX не оновився (Firefox, термінали)
+    case failed                   // Не вдалося виконати або доставити заміну
+}
+
+// * -- Дії синтетичного введення для тестування планів заміни --
+public enum SyntheticKeyAction: Equatable, Sendable {
+    case backspace(count: Int)
+    case ctrlW
+    case cmdC
+    case cmdV(text: String)
+}
+
 // * -- Результат успішного перетворення тексту --
 public struct TransformationResult: Sendable, Equatable {
     public var command: PuntoCommand             // Яка саме команда виконалася
@@ -240,6 +255,7 @@ public struct TransformationResult: Sendable, Equatable {
     public var replacementText: String           // Новий текст для заміни
     public var sourceLanguage: PuntoLanguage?    // Виявлена початкова мова (якщо застосовно)
     public var targetLanguage: PuntoLanguage?    // Кінцева мова розкладки або транслітерації (якщо застосовно)
+    public var effectiveBaseText: String?        // Фактичний текст на екрані, від якого рахувалася трансформація
 
     // * -- Ініціалізатор результату --
     public init(
@@ -247,17 +263,29 @@ public struct TransformationResult: Sendable, Equatable {
         originalText: String,
         replacementText: String,
         sourceLanguage: PuntoLanguage?,
-        targetLanguage: PuntoLanguage?
+        targetLanguage: PuntoLanguage?,
+        effectiveBaseText: String? = nil
     ) {
         self.command = command
         self.originalText = originalText
         self.replacementText = replacementText
         self.sourceLanguage = sourceLanguage
         self.targetLanguage = targetLanguage
+        self.effectiveBaseText = effectiveBaseText
     }
 
-    // * -- Чи призвела операція до реальних змін у тексті --
+    // * -- Чи призвела операція до реальних змін у тексті або мові --
     public var didChange: Bool {
-        originalText != replacementText || (sourceLanguage != nil && targetLanguage != nil && sourceLanguage != targetLanguage)
+        originalText != replacementText ||
+        (effectiveBaseText != nil && effectiveBaseText != replacementText) ||
+        (sourceLanguage != nil && targetLanguage != nil && sourceLanguage != targetLanguage)
+    }
+
+    // * -- Чи вимагає результат фактичної заміни символів на екрані --
+    public var requiresTextReplacement: Bool {
+        if let effectiveBaseText, !effectiveBaseText.isEmpty {
+            return effectiveBaseText != replacementText
+        }
+        return originalText != replacementText
     }
 }

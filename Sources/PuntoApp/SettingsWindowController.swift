@@ -286,14 +286,58 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         activeRecordingButton = button
         button.title = t(.pressKeys)
         recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak button] event in
+            guard let self else { return nil }
             let modifiers = HotKeyModifiers(modifierFlags: event.modifierFlags)
-            let hotKey = HotKey.combination(keyCode: Int(event.keyCode), modifiers: modifiers)
+            let keyCode = Int(event.keyCode)
+
+            // Якщо натиснуто Esc без модифікаторів — скасовуємо запис
+            if keyCode == 53 && modifiers.isEmpty {
+                button?.title = self.t(.record)
+                self.activeRecordingButton = nil
+                self.stopRecording()
+                return nil
+            }
+
+            // Валідація: гаряча клавіша повинна містити хоча б один модифікатор (Cmd/Opt/Ctrl/Shift)
+            // або бути F-клавішею (F1–F12). Одиночні літери заборонені, щоб не блокувати звичайний ввід!
+            let isFunctionKey = (keyCode >= 120 && keyCode <= 122) || (keyCode >= 96 && keyCode <= 101) || (keyCode >= 109 && keyCode <= 111) || keyCode == 103 || keyCode == 118
+            let hasModifiers = !modifiers.isEmpty
+
+            if !hasModifiers && !isFunctionKey {
+                NSSound.beep()
+                rawLog("startRecording: відхилено клавішу без модифікаторів (keyCode=\(keyCode))")
+                return nil
+            }
+
+            let hotKey = HotKey.combination(keyCode: keyCode, modifiers: modifiers)
+
+            // Перевірка конфлікту з іншими гарячими клавішами
+            if self.hasConflict(with: hotKey) {
+                NSSound.beep()
+                rawLog("startRecording: виявлено конфлікт гарячих клавіш з \(hotKey.displayTitle)")
+                Diagnostics.showError("Ця комбінація вже використовується для іншої дії!", language: self.state.settings.interfaceLanguage)
+                button?.title = self.t(.record)
+                self.activeRecordingButton = nil
+                self.stopRecording()
+                return nil
+            }
+
             update(hotKey)
-            button?.title = self?.t(.record) ?? "Record"
-            self?.activeRecordingButton = nil
-            self?.stopRecording()
+            button?.title = self.t(.record)
+            self.activeRecordingButton = nil
+            self.stopRecording()
             return nil
         }
+    }
+
+    private func hasConflict(with hotKey: HotKey) -> Bool {
+        let existing = [
+            state.settings.mainHotKey,
+            state.settings.caseHotKey,
+            state.settings.transliterationHotKey,
+            state.settings.pauseHotKey
+        ]
+        return existing.contains(hotKey)
     }
 
     private func stopRecording() {

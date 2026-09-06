@@ -19,6 +19,19 @@ final class InputSourceController {
         return TISSelectInputSource(source) == noErr
     }
 
+    // * -- Отримання поточної активної мови клавіатури --
+    func currentLanguage() -> PuntoLanguage? {
+        guard let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
+            return nil
+        }
+        for lang in PuntoLanguage.allCases {
+            if sourceMatchScore(current, language: lang) != nil {
+                return lang
+            }
+        }
+        return nil
+    }
+
     // * -- Отримання списку активних мов --
     func activeLanguages() -> [PuntoLanguage] {
         guard let categoryKey = kTISPropertyInputSourceCategory,

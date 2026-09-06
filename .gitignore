@@ -34,3 +34,5 @@ DerivedData/
 .env.*
 .vscode/
 .idea/
+docs/Analiz/
+graphify-out/

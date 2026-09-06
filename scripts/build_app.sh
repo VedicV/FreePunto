@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="${APP_NAME:-FreePunto}"
 CONFIGURATION="${CONFIGURATION:-release}"
-VERSION="${VERSION:-0.2.1}"
+VERSION="${VERSION:-0.2.2}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
 CODESIGN_IDENTITY="${FREEPUNTO_CODESIGN_IDENTITY:-${CODESIGN_IDENTITY:--}}"
 APP_DIR="$ROOT_DIR/dist/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -28,6 +29,13 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BIN_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$ICNS_PATH" "$RESOURCES_DIR/AppIcon.icns"
+
+IS_TEST_BUILD="${IS_TEST_BUILD:-0}"
+if [ "$IS_TEST_BUILD" = "1" ] || [[ "$VERSION" =~ -(test|beta|alpha|dev|rc) ]]; then
+    IS_TEST_PLIST="<true/>"
+else
+    IS_TEST_PLIST="<false/>"
+fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -53,7 +61,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
+    <key>FreePuntoIsTestBuild</key>
+    ${IS_TEST_PLIST}
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -64,6 +74,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign "$CODESIGN_IDENTITY" "$APP_DIR"
+codesign --force --sign "$CODESIGN_IDENTITY" -r='designated => identifier "dev.freepunto.FreePunto"' "$APP_DIR"
 echo "Built $APP_DIR"
-echo "Signed with identity: $CODESIGN_IDENTITY"
+echo "Signed with identity: $CODESIGN_IDENTITY (stable designated requirement: identifier dev.freepunto.FreePunto)"

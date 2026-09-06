@@ -111,9 +111,9 @@ public enum LayoutTransformer {
         case (.english, .russian):
             return englishToRussianStatic[character] ?? character
         case (.ukrainian, .english):
-            return ukrainianToEnglishStatic[character] ?? character
+            return ukrainianToEnglishStatic[character] ?? russianToEnglishStatic[character] ?? character
         case (.russian, .english):
-            return russianToEnglishStatic[character] ?? character
+            return russianToEnglishStatic[character] ?? ukrainianToEnglishStatic[character] ?? character
         case (.ukrainian, .russian):
             return ukrainianToRussianStatic[character] ?? character
         case (.russian, .ukrainian):
