@@ -84,6 +84,9 @@ final class TextIOController {
     func cancelCurrentCommand() { locked { generation &+= 1 } }
     var currentTargetIdentity: String? { locked { context?.identity } }
 
+    /// Перевірка еквівалентності фокусного елемента для Chromium та Electron (VS Code, Antigravity).
+    /// Після синтетичних клавіатурних подій внутрішній AX-обгортковий об'єкт у Blink може перестворюватися,
+    /// через що пряме `CFEqual` повертає `false`, хоча вікно, процес та роль елемента не змінилися.
     private func isEquivalentFocusElement(_ a: AXUIElement, _ b: AXUIElement) -> Bool {
         if CFEqual(a, b) { return true }
         let roleA = stringAttribute(kAXRoleAttribute, from: a)
@@ -413,13 +416,24 @@ final class TextIOController {
         return acceptFocusedPaste && isCommandContextCurrent()
     }
 
+    /// Заміна виділеного тексту в терміналі.
+    /// У термінальних емуляторах виділення мишкою є суто візуальним — сам шел (zsh/bash) про нього не знає,
+    /// тому звичайний Cmd+V просто вставляє текст на поточну позицію каретки (в кінець рядка).
+    /// Якщо виділено однорядкове слово чи фразу (до 120 символів), надсилаємо відповідну кількість Backspace
+    /// перед вставкою, що повністю видаляє виділений текст із промпту і вставляє перетворене слово.
     private func replaceTerminalSelection(_ target: TextTarget, with replacement: String) -> ReplaceOutcome {
+        let count = target.original.count
+        let canBackspace = !target.original.contains(where: { $0.isNewline }) && count > 0 && count <= 120
         let outcome = ReplacementTransaction.execute(
             isCurrent: { self.isTargetCurrent(target) },
             prepare: { self.isTargetCurrent(target) },
             submit: {
                 guard self.isTargetCurrent(target) else { return .notStarted }
-                return self.submitPaste(replacement, target: target)
+                if canBackspace {
+                    return self.submitTerminalWord(replacement, backspaceCount: count, target: target)
+                } else {
+                    return self.submitPaste(replacement, target: target)
+                }
             },
             verify: { self.isTargetCurrent(target) }
         )
@@ -453,7 +467,7 @@ final class TextIOController {
                                     target: TextTarget) -> ReplacementTransaction.Submission {
         let session = syncMain { ClipboardSession(pasteboard: pasteboard) }
         defer { syncMain { session.restoreIfOwned() } }
-        guard isTargetCurrent(target), syncMain({ session.write(text) }), snapshotIsFresh(target) else {
+        guard isTargetCurrent(target), syncMain({ session.write(text) }) else {
             return .notStarted
         }
         var didSubmit = false
@@ -468,7 +482,7 @@ final class TextIOController {
                                    extraGuard: { self.syncMain { session.isOwned } }) else {
             return didSubmit ? .attempted : .notStarted
         }
-        Thread.sleep(forTimeInterval: 0.45)
+        Thread.sleep(forTimeInterval: 0.15)
         return .attempted
     }
 
@@ -631,6 +645,10 @@ final class TextIOController {
         }
     }
 
+    /// Визначає, чи є елемент у середовищі IDE дійсною поверхнею редагування.
+    /// Будь-яке сфокусоване текстове поле (AXTextArea, AXTextField, AXComboBox, AXSearchField) або елемент
+    /// із властивістю isEditable автоматично вважається валідним. Це гарантує надійну роботу в чаті,
+    /// рядку пошуку та полях повідомлень без залежності від конкретної локалізації інтерфейсу IDE.
     private func isConfirmedEditorSurface(_ element: AXUIElement) -> Bool {
         let role = stringAttribute(kAXRoleAttribute, from: element) ?? ""
         if [kAXTextAreaRole, kAXTextFieldRole, kAXComboBoxRole, "AXSearchField"].contains(role) {
@@ -694,6 +712,9 @@ final class TextIOController {
         return false
     }
 
+    /// Надсилання синтетичної комбінації клавіш із обов'язковою апаратною паузою 20 мс між keyDown та keyUp.
+    /// Без паузи черга подій Chromium та Electron (VS Code, Antigravity, Chrome) зливає події
+    /// з однаковими timestamp або взагалі їх ігнорує.
     private func sendKeyboardShortcut(keyCode: CGKeyCode, flags: CGEventFlags,
                                       extraGuard: () -> Bool = { true }) -> Bool {
         guard Diagnostics.accessibilityTrusted(prompt: false), isCommandContextCurrent(), extraGuard(),
