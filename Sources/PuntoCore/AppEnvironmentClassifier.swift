@@ -13,8 +13,9 @@ public enum AppEnvironmentClassifier {
 
     // * -- Стратегія читання тексту --
     public enum ReadStrategy: String, Equatable, Sendable {
-        case terminalActiveLineAXValue
+        case terminalSelectionOrPrompt
         case browserEditableCmdCFirst
+        case browserSelectionCmdC
         case browserConfirmedGrid
         case codeEditorDirectAXFirst
         case otherApp
@@ -33,16 +34,16 @@ public enum AppEnvironmentClassifier {
 
         switch appKind {
         case .standaloneTerminal, .integratedTerminal:
-            return .terminalActiveLineAXValue
+            return .terminalSelectionOrPrompt
 
         case .browser:
-            if isEditable {
-                return .browserEditableCmdCFirst
-            } else if isConfirmedGrid {
+            if isConfirmedGrid {
                 return .browserConfirmedGrid
+            } else if isEditable {
+                return .browserEditableCmdCFirst
             } else {
-                // Звичайна веб-сторінка (non-editable, non-grid) повертає none (nil)
-                return .none
+                // Навіть статична вебсторінка може мати явне виділення, яке читається через Cmd+C.
+                return .browserSelectionCmdC
             }
 
         case .codeEditor:
@@ -87,97 +88,68 @@ public enum AppEnvironmentClassifier {
         "com.google.antigravity-ide",
     ]
 
-    // * -- Ключові слова інтегрованого терміналу (загальні) --
-    private static let generalTerminalKeywords = [
-        "terminal",
-        "xterm",
-        "shell",
-        "console",
-        "command line",
-        "pty",
-        "терминал",
-        "термінал"
-    ]
+    /// Ідентичність одного AX-елемента. Навмисно не містить редаговане значення та назву вікна.
+    public struct ElementIdentity: Equatable, Sendable {
+        public var role: String?
+        public var title: String?
+        public var description: String?
+        public var identifier: String?
 
-    // * -- Ключові символи запросу командного рядка --
-    private static let terminalPromptIndicators = [
-        "$ ",
-        "% ",
-        "❯ ",
-        "λ "
-    ]
-
-    // * -- Назви оболонок (тільки для властивостей елемента, не для заголовка вікна) --
-    private static let shellNames = [
-        "zsh",
-        "bash",
-        "fish",
-        "sh",
-        "tmux",
-        "screen"
-    ]
-
-    // * -- Перевірка належності до сімейства VS Code --
-    public static func isVSCodeFamily(bundleIdentifier: String?) -> Bool {
-        guard let bundleIdentifier else {
-            return false
+        public init(role: String? = nil, title: String? = nil,
+                    description: String? = nil, identifier: String? = nil) {
+            self.role = role
+            self.title = title
+            self.description = description
+            self.identifier = identifier
         }
+    }
 
+    private static let terminalPromptIndicators = ["$ ", "% ", "❯ ", "λ "]
+    private static let shellNames: Set<String> = ["zsh", "bash", "fish", "sh", "tmux", "screen"]
+    private static let terminalTokens: Set<String> = ["terminal", "xterm", "shell", "pty", "терминал", "термінал"]
+
+    public static func isVSCodeFamily(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
         return vscodeFamilyIdentifiers.contains(bundleIdentifier)
     }
 
-    // * -- Перевірка, чи є елемент інтегрованим терміналом --
+    /// Батьківські елементи впорядковані від найближчого. Пошук зупиняється на межі
+    /// документа/редактора і не використовує назву вікна чи текст, схожий на промпт.
     public static func isIntegratedTerminal(
-        role: String?,
-        title: String?,
-        description: String?,
-        identifier: String?,
-        value: String?
+        role: String?, title: String?, description: String?, identifier: String?, value: String?,
+        ancestors: [ElementIdentity] = []
     ) -> Bool {
-        // AXTextField у VS Code / Electron може бути полем xterm, але може бути і Find/чат.
-        // Якщо це AXTextField без термінальних ключових слів в ідентифікаторах і без промпту, це редактор.
-        if role == "AXTextField" {
-            let fields = [title, description, identifier].compactMap { $0?.lowercased() }
-            let hasTerminalIdentity = fields.contains { f in
-                generalTerminalKeywords.contains { f.contains($0) } ||
-                shellNames.contains { f.contains($0) }
-            }
-            if !hasTerminalIdentity && !(value.map(containsTerminalPrompt) ?? false) {
+        let focused = ElementIdentity(role: role, title: title, description: description, identifier: identifier)
+        for element in [focused] + Array(ancestors.prefix(8)) {
+            if element.role == "AXWindow" || element.role == "AXApplication" { break }
+            let identity = [element.title, element.description, element.identifier]
+                .compactMap { $0?.lowercased() }
+            let tokens = Set(identity.flatMap { $0.components(separatedBy: CharacterSet.alphanumerics.inverted) })
+            // Редактор та його пошук або чат не є терміналом у сусідній панелі.
+            if element.role == "AXDocument" || !tokens.isDisjoint(with: ["editor", "document", "find", "search", "chat"]) {
                 return false
             }
-        }
-
-        // 1. Шукаємо термінальні ключові слова у властивостях самого елемента (не в довільному тексті коду!)
-        let elementIdentityFields = [role, title, description, identifier]
-            .compactMap { $0?.lowercased() }
-
-        for field in elementIdentityFields {
-            for kw in generalTerminalKeywords {
-                if field.contains(kw) { return true }
+            // Назва файла або шлях на кшталт terminal.swift чи shell.md не визначає термінал.
+            let scopedTitle = element.title.flatMap { title -> String? in
+                title.contains(".") || title.contains("/") ? nil : title
             }
-            // Назви оболонок шукаємо як окремі слова/токени (щоб 'English' не матчився на 'sh')
-            let tokens = field.components(separatedBy: CharacterSet.alphanumerics.inverted)
-            for shell in shellNames {
-                if tokens.contains(shell) {
-                    return true
-                }
-            }
+            let terminalIdentity = [scopedTitle, element.description, element.identifier]
+                .compactMap { $0?.lowercased() }
+            let terminalIdentityTokens = Set(terminalIdentity.flatMap {
+                $0.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            })
+            if !terminalIdentityTokens.isDisjoint(with: terminalTokens) { return true }
+            if terminalIdentity.contains(where: { shellNames.contains($0) }) { return true }
         }
-
-        // 2. Якщо в ідентифікаторах немає прямого збігу, перевіряємо промпт в останньому рядку,
-        // якщо це не звичайний текстовий редактор/документ.
-        let isEditor = elementIdentityFields.contains { $0.contains("editor") || $0.contains("document") }
-        if !isEditor, let val = value, !val.isEmpty {
-            let lastLine = val.components(separatedBy: .newlines)
-                .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-                .trimmingCharacters(in: .whitespaces) ?? ""
-
-            if containsTerminalPrompt(lastLine) {
-                return true
-            }
-        }
-
         return false
+    }
+
+    public static func classify(bundleIdentifier: String?, focusedElement: ElementIdentity,
+                                ancestors: [ElementIdentity] = []) -> AppKind {
+        appKind(bundleIdentifier: bundleIdentifier, isIntegratedTerminal: isIntegratedTerminal(
+            role: focusedElement.role, title: focusedElement.title,
+            description: focusedElement.description, identifier: focusedElement.identifier,
+            value: nil, ancestors: ancestors))
     }
 
     public static func containsTerminalPrompt(_ line: String) -> Bool {
@@ -247,6 +219,8 @@ public enum AppEnvironmentClassifier {
         "com.google.Chrome.canary",
         "org.mozilla.firefox",
         "org.mozilla.firefoxdeveloperedition",
+        "org.mozilla.nightly",
+        "org.mozilla.firefoxnightly",
         "com.apple.Safari",
         "com.apple.SafariTechnologyPreview",
         "com.brave.Browser",
@@ -258,10 +232,37 @@ public enum AppEnvironmentClassifier {
         "org.chromium.Chromium",
     ]
 
+    private static let chromiumBundleIdentifiers: Set<String> = [
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "com.brave.Browser",
+        "com.microsoft.edgemac",
+        "com.operasoftware.Opera",
+        "com.operasoftware.OperaGX",
+        "com.vivaldi.Vivaldi",
+        "org.chromium.Chromium",
+    ]
+
     // * -- Перевірка, чи є застосунок веб-браузером --
     public static func isBrowser(bundleIdentifier: String?) -> Bool {
         guard let bundleIdentifier else { return false }
         return browserBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    // * -- Chromium може не повертати AXSelectedText та AXSelectedTextRange у вебвмісті --
+    public static func isChromium(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return chromiumBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    // Визначає вузький виняток для компонентів, які не повертають повний AXValue після paste.
+    public static func allowsFocusedPasteVerification(
+        bundleIdentifier: String?,
+        isConfirmedEditorSurface: Bool,
+        isCopiedBrowserSelection: Bool
+    ) -> Bool {
+        (isVSCodeFamily(bundleIdentifier: bundleIdentifier) && isConfirmedEditorSurface)
+            || (isChromium(bundleIdentifier: bundleIdentifier) && isCopiedBrowserSelection)
     }
 
     // * -- Визначення типу застосунку за bundleIdentifier та контекстом елемента --
@@ -278,8 +279,23 @@ public enum AppEnvironmentClassifier {
         return .other
     }
 
-    // * -- Витяг останнього слова з активного рядка промпту терміналу --
-    // * -- Повертає nil, якщо буфер порожній, не містить промпту (output), або рядок містить лише символ промпту --
+    public struct TerminalPromptTarget: Equatable, Sendable {
+        public let word: String
+        public let backspaceCount: Int
+
+        public init(word: String, backspaceCount: Int) {
+            self.word = word
+            self.backspaceCount = backspaceCount
+        }
+    }
+
+    // Повертає ціль лише тоді, коли останній змістовний рядок схожий на активний промпт.
+    public static func terminalPromptTarget(from axValue: String?) -> TerminalPromptTarget? {
+        guard let word = terminalPromptLastWord(from: axValue) else { return nil }
+        return TerminalPromptTarget(word: word, backspaceCount: word.count)
+    }
+
+    // Парсер навмисно відкидає вивід, порожній промпт і фрагменти оформлення промпту.
     public static func terminalPromptLastWord(from axValue: String?) -> String? {
         guard let axValue, !axValue.isEmpty, !axValue.contains("Screen Reader Accessibility") else {
             return nil
@@ -351,22 +367,14 @@ public enum AppEnvironmentClassifier {
 
     // * -- Перевірка, чи підтримує застосунок AXSelectedTextRange для читання чи виділення --
     // * -- Для org.mozilla.firefox AXSelectedTextRange нестабільний і не повинен використовуватися --
-    public static func supportsAXSelectedTextRange(bundleIdentifier: String?) -> Bool {
-        guard let bundleIdentifier else { return true }
-        if bundleIdentifier == "org.mozilla.firefox" {
-            return false
-        }
-        return true
+    public static func isFirefox(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return ["org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition",
+                "org.mozilla.nightly", "org.mozilla.firefoxnightly"].contains(bundleIdentifier)
     }
 
-    // * -- План синтетичних дій для заміни останнього слова в інтегрованому терміналі --
-    // * -- Рівно wordLength разів Backspace, потім Cmd+V (без Ctrl+W та Cmd+C) --
-    public static func integratedTerminalReplacementPlan(wordLength: Int, replacement: String) -> [SyntheticKeyAction] {
-        guard wordLength > 0 else { return [] }
-        return [
-            .backspace(count: wordLength),
-            .cmdV(text: replacement)
-        ]
+    public static func supportsAXSelectedTextRange(bundleIdentifier: String?) -> Bool {
+        !isFirefox(bundleIdentifier: bundleIdentifier)
     }
 
 }

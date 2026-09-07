@@ -1,9 +1,21 @@
 import Foundation
 
+/// Непрозорий receipt однієї підготовки в межах одного покоління рушія.
+public struct ConversionToken: Equatable, Sendable {
+    fileprivate let id: UUID
+    fileprivate let generation: UInt64
+}
+
+public struct PreparedLayoutConversion: Sendable {
+    public let token: ConversionToken
+    public let result: TransformationResult
+}
+
 // * -- Центральний двигун перетворень --
 public final class PuntoEngine: @unchecked Sendable {
     // Зберігає останній крок, щоб повторне натискання йшло тим самим циклом мов.
     private struct LayoutContext {
+        var targetIdentity: String?
         var originalText: String
         var textAfterConversion: String
         var originalLanguage: PuntoLanguage
@@ -14,7 +26,17 @@ public final class PuntoEngine: @unchecked Sendable {
     }
 
     private var layoutContext: LayoutContext?
-    private var pendingLayoutContext: LayoutContext?
+    private struct PendingConversion {
+        let token: ConversionToken
+        let context: LayoutContext?
+        let targetIdentity: String?
+        let originalText: String
+        let replacementText: String
+    }
+
+    private var unknownConversion: PendingConversion?
+    private var pendingConversion: PendingConversion?
+    private var generation: UInt64 = 0
     private let lock = NSLock()
 
     public init() {}
@@ -23,25 +45,66 @@ public final class PuntoEngine: @unchecked Sendable {
     public func resetContext() {
         lock.lock()
         defer { lock.unlock() }
-        layoutContext = nil
-        pendingLayoutContext = nil
+        invalidateContext()
     }
 
-    // * -- Фіксація відкладеного контексту після успішної заміни --
+    /// Commit виконується лише для тієї підготовки, чию заміну підтверджено.
+    @discardableResult
+    public func commitPendingConversion(_ token: ConversionToken) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return commit(token)
+    }
+
+    /// Невизначені й невдалі записи скасовують старий цикл разом з очікуваним кроком.
+    /// Пізнє завершення скасованої операції не може вплинути на новішу операцію.
+    @discardableResult
+    public func discardPendingConversion(_ token: ConversionToken) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard pendingConversion?.token == token, token.generation == generation else { return false }
+        invalidateContext()
+        return true
+    }
+
+    /// Доставка не доводить запис. Receipt зберігається до звірки зі свіжим читанням.
+    @discardableResult
+    public func recordUnknownConversion(_ token: ConversionToken) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let pending = pendingConversion,
+              pending.token == token, token.generation == generation else { return false }
+        invalidateContext()
+        unknownConversion = pending
+        return true
+    }
+
+    /// Сумісність із синхронними викликами. I/O застосунку має використовувати token.
     public func commitPendingConversion() {
         lock.lock()
         defer { lock.unlock() }
-        if let pending = pendingLayoutContext {
-            layoutContext = pending
-            pendingLayoutContext = nil
-        }
+        if let token = pendingConversion?.token { _ = commit(token) }
     }
 
-    // * -- Скасування відкладеного контексту при невдалій заміні --
     public func discardPendingConversion() {
         lock.lock()
         defer { lock.unlock() }
-        pendingLayoutContext = nil
+        invalidateContext()
+    }
+
+    public func prepareLayoutConversion(
+        _ text: String,
+        settings: PuntoSettings,
+        enabledLanguages: [PuntoLanguage] = PuntoLanguage.allCases,
+        currentLanguage: PuntoLanguage? = nil,
+        targetIdentity: String
+    ) -> PreparedLayoutConversion? {
+        lock.lock()
+        defer { lock.unlock() }
+        return prepareLayout(
+            text, settings: settings, enabledLanguages: enabledLanguages,
+            currentLanguage: currentLanguage, targetIdentity: targetIdentity
+        )
     }
 
     // * -- Перемикання розкладки за фізичними клавішами --
@@ -55,6 +118,48 @@ public final class PuntoEngine: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        guard let prepared = prepareLayout(
+            text, settings: settings, enabledLanguages: enabledLanguages,
+            currentLanguage: currentLanguage, targetIdentity: nil
+        ) else {
+            return TransformationResult(
+                command: .layout, originalText: text, replacementText: text,
+                sourceLanguage: nil, targetLanguage: nil
+            )
+        }
+        if autoCommit { _ = commit(prepared.token) }
+        return prepared.result
+    }
+
+    // Виклик утримує lock під час підготовки, тому reset не вклинюється перед публікацією.
+    private func prepareLayout(
+        _ text: String,
+        settings: PuntoSettings,
+        enabledLanguages: [PuntoLanguage],
+        currentLanguage: PuntoLanguage?,
+        targetIdentity: String?
+    ) -> PreparedLayoutConversion? {
+        if let receipt = unknownConversion {
+            if receipt.targetIdentity == targetIdentity {
+                // Застарілий AX може повернути оригінал після paste; такий запис не повторюється.
+                if text == receipt.originalText { return nil }
+                if text == receipt.replacementText {
+                    layoutContext = receipt.context
+                }
+            }
+            unknownConversion = nil
+        }
+        if pendingConversion != nil {
+            // Невизначений запис міг змінити текст, тому його старий цикл не успадковується.
+            invalidateContext()
+        }
+        if let context = layoutContext,
+           context.targetIdentity != targetIdentity || context.textAfterConversion != text ||
+           context.switchingMode != settings.switchingMode || context.enabledLanguages != enabledLanguages {
+            layoutContext = nil
+        }
+        generation &+= 1
+        let token = ConversionToken(id: UUID(), generation: generation)
         let fallback = layoutContext?.currentLanguage
             ?? currentLanguage
             ?? (enabledLanguages.contains(.ukrainian) ? .ukrainian : .english)
@@ -126,6 +231,7 @@ public final class PuntoEngine: @unchecked Sendable {
         if settings.switchingMode == .sequential {
             let initialOriginalText = isContinuingCycle ? (previousOriginalText ?? text) : text
             let newContext = LayoutContext(
+                targetIdentity: targetIdentity,
                 originalText: initialOriginalText,
                 textAfterConversion: replacement,
                 originalLanguage: originalLanguage,
@@ -134,18 +240,19 @@ public final class PuntoEngine: @unchecked Sendable {
                 switchingMode: settings.switchingMode,
                 enabledLanguages: enabledLanguages
             )
-            if autoCommit {
-                layoutContext = newContext
-                pendingLayoutContext = nil
-            } else {
-                pendingLayoutContext = newContext
-            }
+            pendingConversion = PendingConversion(
+                token: token, context: newContext, targetIdentity: targetIdentity,
+                originalText: text, replacementText: replacement
+            )
         } else {
             layoutContext = nil
-            pendingLayoutContext = nil
+            pendingConversion = PendingConversion(
+                token: token, context: nil, targetIdentity: targetIdentity,
+                originalText: text, replacementText: replacement
+            )
         }
 
-        return TransformationResult(
+        let result = TransformationResult(
             command: .layout,
             originalText: text,
             replacementText: replacement,
@@ -153,14 +260,29 @@ public final class PuntoEngine: @unchecked Sendable {
             targetLanguage: target,
             effectiveBaseText: effectiveBaseText
         )
+        return PreparedLayoutConversion(token: token, result: result)
+    }
+
+    private func commit(_ token: ConversionToken) -> Bool {
+        guard let pending = pendingConversion,
+              pending.token == token, token.generation == generation else { return false }
+        layoutContext = pending.context
+        pendingConversion = nil
+        return true
+    }
+
+    private func invalidateContext() {
+        generation &+= 1
+        layoutContext = nil
+        pendingConversion = nil
+        unknownConversion = nil
     }
 
     // * -- Перетворення регістру --
     public func convertCase(_ text: String, mode: CaseMode) -> TransformationResult {
         lock.lock()
         defer { lock.unlock() }
-        layoutContext = nil
-        pendingLayoutContext = nil
+        invalidateContext()
         return TransformationResult(
             command: .letterCase,
             originalText: text,
@@ -174,8 +296,7 @@ public final class PuntoEngine: @unchecked Sendable {
     public func transliterate(_ text: String, targetLanguage: PuntoLanguage) -> TransformationResult {
         lock.lock()
         defer { lock.unlock() }
-        layoutContext = nil
-        pendingLayoutContext = nil
+        invalidateContext()
         return Transliterator.transliterate(text, targetLanguage: targetLanguage)
     }
 

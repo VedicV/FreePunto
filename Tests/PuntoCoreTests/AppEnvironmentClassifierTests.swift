@@ -106,3 +106,92 @@ final class AppEnvironmentClassifierTests: XCTestCase {
         )
     }
 }
+
+extension AppEnvironmentClassifierTests {
+    func testFilenameDoesNotConfirmTerminal() {
+        for title in ["terminal.swift", "shell.md", "script.sh", ".zshrc", "/tmp/terminal"] {
+            XCTAssertFalse(AppEnvironmentClassifier.isIntegratedTerminal(
+                role: "AXTextArea", title: title, description: nil, identifier: nil, value: nil))
+        }
+    }
+
+    func testPromptTextNeverConfirmsTerminal() {
+        for role in ["AXTextArea", "AXTextField"] {
+            for text in ["user@host:~$ command", "❯ ghbdtn", "(venv) root@host:~# ls"] {
+                XCTAssertFalse(AppEnvironmentClassifier.isIntegratedTerminal(
+                    role: role, title: nil, description: nil, identifier: nil, value: text))
+            }
+        }
+    }
+
+    func testAncestorsRequireLocalIdentityAndRespectEditorBoundary() {
+        typealias Identity = AppEnvironmentClassifier.ElementIdentity
+        let terminal = Identity(role: "AXGroup", identifier: "xterm-wrapper")
+        XCTAssertEqual(AppEnvironmentClassifier.classify(bundleIdentifier: "com.google.antigravity",
+            focusedElement: Identity(role: "AXTextArea"), ancestors: [terminal]), .integratedTerminal)
+        XCTAssertEqual(AppEnvironmentClassifier.classify(bundleIdentifier: "com.microsoft.VSCode",
+            focusedElement: Identity(role: "AXTextArea", description: "editor document"),
+            ancestors: [terminal]), .codeEditor)
+        XCTAssertEqual(AppEnvironmentClassifier.classify(bundleIdentifier: "com.microsoft.VSCode",
+            focusedElement: Identity(role: "AXTextArea"),
+            ancestors: [Identity(role: "AXWindow", title: "zsh terminal")]), .codeEditor)
+        XCTAssertEqual(AppEnvironmentClassifier.classify(bundleIdentifier: "com.google.antigravity",
+            focusedElement: Identity(role: "AXTextArea"),
+            ancestors: [Identity(role: "AXGroup", title: "Agent"), terminal]), .integratedTerminal)
+    }
+
+    func testFirefoxRangePolicyAppliesToFamily() {
+        for bundle in ["org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition",
+                       "org.mozilla.nightly", "org.mozilla.firefoxnightly"] {
+            XCTAssertTrue(AppEnvironmentClassifier.isFirefox(bundleIdentifier: bundle))
+            XCTAssertTrue(AppEnvironmentClassifier.isBrowser(bundleIdentifier: bundle))
+            XCTAssertFalse(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: bundle))
+        }
+        XCTAssertTrue(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: "com.google.Chrome"))
+    }
+
+    func testTerminalAndStaticBrowserRemainRoutable() {
+        XCTAssertEqual(AppEnvironmentClassifier.determineReadStrategy(
+            appKind: .standaloneTerminal, hasAccessibility: true,
+            isEditable: false, isConfirmedGrid: false), .terminalSelectionOrPrompt)
+        XCTAssertEqual(AppEnvironmentClassifier.determineReadStrategy(
+            appKind: .integratedTerminal, hasAccessibility: true,
+            isEditable: true, isConfirmedGrid: false), .terminalSelectionOrPrompt)
+        XCTAssertEqual(AppEnvironmentClassifier.determineReadStrategy(
+            appKind: .browser, hasAccessibility: true,
+            isEditable: false, isConfirmedGrid: false), .browserSelectionCmdC)
+    }
+
+    func testChromiumFamilyUsesKeyboardSelectionFallback() {
+        for bundle in ["com.google.Chrome", "com.google.Chrome.canary", "com.brave.Browser",
+                       "com.microsoft.edgemac", "org.chromium.Chromium"] {
+            XCTAssertTrue(AppEnvironmentClassifier.isChromium(bundleIdentifier: bundle))
+        }
+        XCTAssertFalse(AppEnvironmentClassifier.isChromium(bundleIdentifier: "org.mozilla.firefox"))
+    }
+
+    func testFocusedPasteVerificationIsScopedToMonacoAndChromiumCopy() {
+        XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.google.antigravity-ide",
+            isConfirmedEditorSurface: true,
+            isCopiedBrowserSelection: false))
+        XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.google.Chrome",
+            isConfirmedEditorSurface: false,
+            isCopiedBrowserSelection: true))
+        XCTAssertFalse(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.google.Chrome",
+            isConfirmedEditorSurface: false,
+            isCopiedBrowserSelection: false))
+        XCTAssertFalse(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.apple.Safari",
+            isConfirmedEditorSurface: false,
+            isCopiedBrowserSelection: true))
+    }
+
+    func testTerminalPromptTargetCarriesBackspaceCount() {
+        XCTAssertEqual(AppEnvironmentClassifier.terminalPromptTarget(from: "user@mac:~$ ghbdtn"),
+                       .init(word: "ghbdtn", backspaceCount: 6))
+        XCTAssertNil(AppEnvironmentClassifier.terminalPromptTarget(from: "build output"))
+    }
+}

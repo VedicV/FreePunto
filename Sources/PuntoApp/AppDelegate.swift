@@ -14,9 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // * -- Захист від перекритих команд: якщо команда вже виконується, нову ігноруємо --
     private var isRunningCommand = false
     private var isProgrammaticLayoutChange = false
+    private var layoutChangeGeneration: UInt64 = 0
+    private var statusGeneration: UInt64 = 0
+    private var interactionGeneration: UInt64 = 0
     private var permissionTimer: Timer?
 
     private func resetConversionContext() {
+        interactionGeneration &+= 1
+        textIO.cancelCurrentCommand()
         state.engine.resetContext()
     }
 
@@ -33,7 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 main: { [weak self] in self?.performLayoutConversion() },
                 letterCase: { [weak self] in self?.performCaseConversion() },
                 transliteration: { [weak self] in self?.performTransliteration() },
-                pause: { [weak self] in self?.toggleEnabled() }
+                pause: { [weak self] in self?.toggleEnabled() },
+                interaction: { [weak self] in self?.resetConversionContext() }
             )
         )
 
@@ -310,15 +316,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // * -- Загальний сценарій текстової команди --
     // * -- Тяжка частина (читання/заміна тексту) виконується на фоновій черзі commandQueue,
     // * -- щоб не блокувати головний RunLoop і не вимикати CGEventTap по таймауту. --
-    private func performTextCommand(_ command: @escaping (String) -> TransformationResult) {
+    private struct TextCommandResult {
+        let result: TransformationResult
+        let token: ConversionToken?
+    }
+
+    // Коротке повідомлення про стан не забирає фокус у цільового застосунку.
+    private func reportCommandStatus(_ key: AppText.Key) {
+        statusGeneration &+= 1
+        let receipt = statusGeneration
+        statusItem?.button?.toolTip = t(key)
+        NSSound.beep()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, self.statusGeneration == receipt else { return }
+            self.statusItem?.button?.toolTip = nil
+        }
+    }
+
+    private func performTextCommand(_ command: @escaping (String, String) -> TextCommandResult?) {
         // (a) Перевірки та захоплення контексту на головному потоці.
         guard state.settings.isEnabled else {
             return
         }
         guard !isRunningCommand else {
+            reportCommandStatus(.commandBusy)
             return
         }
         isRunningCommand = true
+        let capturedInteraction = interactionGeneration
 
         rawLog("[AppDelegate] performTextCommand ENTRY, enabled=\(state.settings.isEnabled)")
 
@@ -368,74 +393,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         commandQueue.async { [weak self] in
             guard let self else { return }
-
-            rawLog("[AppDelegate] commandQueue block START, bundle=\(bundleID ?? "nil") hasAX=\(hasAX)")
-
-            // (b) Читаємо виділення або попереднє слово на фоні.
-            guard let target = self.textIO.readTarget(bundleIdentifier: bundleID, hasAccessibility: hasAX, focusedElement: focusedEl) else {
-                rawLog("[AppDelegate] readTarget повернув nil → beep")
+            defer {
+                self.textIO.endCommand()
                 DispatchQueue.main.async {
-                    NSSound.beep()
                     self.isRunningCommand = false
+                    self.rebuildMenu()
                 }
+            }
+            guard DispatchQueue.main.sync(execute: {
+                guard self.interactionGeneration == capturedInteraction && self.state.settings.isEnabled else { return false }
+                return self.textIO.beginCommand(bundleIdentifier: bundleID, focusedElement: focusedEl)
+            }),
+                  let target = self.textIO.readTarget(bundleIdentifier: bundleID, hasAccessibility: hasAX, focusedElement: focusedEl),
+                  let identity = self.textIO.currentTargetIdentity,
+                  self.textIO.isTargetCurrent(target) else {
+                DispatchQueue.main.async { self.reportCommandStatus(.noReliableTarget) }
                 return
             }
-
-            rawLog("[AppDelegate] readTarget ok: length=\(target.text.count)")
-
-            // (c) Виконуємо перетворення і пропускаємо результат без змін.
-            let result = command(target.text)
-            rawLog("[AppDelegate] transform: len=\(result.originalText.count) replacementLen=\(result.replacementText.count) src=\(result.sourceLanguage?.rawValue ?? "nil") tgt=\(result.targetLanguage?.rawValue ?? "nil") didChange=\(result.didChange)")
-            guard result.didChange else {
-                rawLog("[AppDelegate] transform didChange=false → beep")
-                self.state.engine.discardPendingConversion()
-                DispatchQueue.main.async {
-                    NSSound.beep()
-                    self.isRunningCommand = false
-                }
+            // Невдала підготовка навмисно зберігає невизначений receipt: його очищення
+            // дозволило б застарілому AX-знімку повторити попередній запис.
+            guard let prepared = command(target.text, identity) else {
+                DispatchQueue.main.async { self.reportCommandStatus(.replacementUnconfirmed) }
                 return
             }
-
-            // (d) Замінюємо поточний вибір через системне введення, якщо текст змінився.
-            if result.requiresTextReplacement {
-                let outcome = self.textIO.replace(target, with: result.replacementText)
-                switch outcome {
-                case .successVerified:
-                    rawLog("[AppDelegate] replace outcome: successVerified → committing conversion")
-                    self.state.engine.commitPendingConversion()
-                case .deliveredUnconfirmedAX:
-                    rawLog("[AppDelegate] replace outcome: deliveredUnconfirmedAX → delivered, AX unconfirmed, discard pending without error")
-                    self.state.engine.discardPendingConversion()
-                case .failed:
-                    rawLog("[AppDelegate] replace outcome: failed → showError")
-                    self.state.engine.discardPendingConversion()
-                    DispatchQueue.main.async {
-                        Diagnostics.showError(self.t(.couldNotReplaceText), language: self.state.settings.interfaceLanguage)
-                        self.isRunningCommand = false
-                    }
-                    return
-                }
-            } else if result.didChange {
-                rawLog("[AppDelegate] text did not change but language changed (original == replacement) → committing conversion")
-                self.state.engine.commitPendingConversion()
+            let result = prepared.result
+            guard result.didChange, self.textIO.isTargetCurrent(target) else {
+                if let token = prepared.token { self.state.engine.discardPendingConversion(token) }
+                DispatchQueue.main.async { self.reportCommandStatus(.noReliableTarget) }
+                return
             }
-
-            // (e) Синхронізуємо macOS input source і оновлюємо меню на головному потоці.
-            // Синхронізуємо macOS input source з мовою результату після заміни,
-            // щоб перемикання розкладки не скидало активне виділення у браузерах.
-            DispatchQueue.main.async {
-                if let targetLanguage = result.targetLanguage {
-                    self.isProgrammaticLayoutChange = true
-                    if !self.inputSources.selectInputSource(for: targetLanguage) {
-                        rawLog("[AppDelegate] Warning: could not switch macOS input source to \(targetLanguage.title)")
+            let outcome = result.requiresTextReplacement
+                ? self.textIO.replace(target, with: result.replacementText)
+                : ReplaceOutcome.successVerified
+            switch outcome {
+            case .successVerified:
+                // Commit і зміна джерела вводу мають бачити ту саму актуальну ціль.
+                DispatchQueue.main.sync {
+                    guard self.textIO.isTargetCurrent(target), self.state.settings.isEnabled else {
+                        if let token = prepared.token { self.state.engine.discardPendingConversion(token) }
+                        return
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        self.isProgrammaticLayoutChange = false
+                    if let token = prepared.token,
+                       !self.state.engine.commitPendingConversion(token) { return }
+                    if let language = result.targetLanguage {
+                        self.layoutChangeGeneration &+= 1
+                        let layoutReceipt = self.layoutChangeGeneration
+                        self.isProgrammaticLayoutChange = true
+                        if !self.inputSources.selectInputSource(for: language) {
+                            self.isProgrammaticLayoutChange = false
+                            self.reportCommandStatus(.inputSourceUnavailable)
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            guard self.layoutChangeGeneration == layoutReceipt else { return }
+                            self.isProgrammaticLayoutChange = false
+                        }
                     }
                 }
-
-                self.rebuildMenu()
-                self.isRunningCommand = false
+            case .deliveredUnconfirmedAX:
+                if let token = prepared.token { self.state.engine.recordUnknownConversion(token) }
+                DispatchQueue.main.async { self.reportCommandStatus(.replacementUnconfirmed) }
+            case .failed:
+                if let token = prepared.token { self.state.engine.discardPendingConversion(token) }
+                DispatchQueue.main.async { self.reportCommandStatus(.couldNotReplaceText) }
             }
         }
     }
@@ -451,14 +470,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let activeLangs = inputSources.activeLanguages()
         let currentLang = inputSources.currentLanguage()
         let settingsSnapshot = state.settings
-        performTextCommand { [state] text in
-            state.engine.convertLayout(
+        performTextCommand { [state] text, identity in
+            guard let prepared = state.engine.prepareLayoutConversion(
                 text,
                 settings: settingsSnapshot,
                 enabledLanguages: activeLangs,
                 currentLanguage: currentLang,
-                autoCommit: false
-            )
+                targetIdentity: identity
+            ) else { return nil }
+            return TextCommandResult(result: prepared.result, token: prepared.token)
         }
     }
 
@@ -469,8 +489,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performCaseConversion() {
         let mode = state.settings.caseMode
-        performTextCommand { [state] text in
-            state.engine.convertCase(text, mode: mode)
+        performTextCommand { [state] text, _ in
+            TextCommandResult(result: state.engine.convertCase(text, mode: mode), token: nil)
         }
     }
 
@@ -482,8 +502,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      // Використовуємо налаштування цілі транслітерації для визначення мови результату.
     private func performTransliteration() {
         let targetLanguage = state.settings.transliterationTargetLanguage
-        performTextCommand { [state] text in
-            state.engine.transliterate(text, targetLanguage: targetLanguage)
+        performTextCommand { [state] text, _ in
+            TextCommandResult(result: state.engine.transliterate(text, targetLanguage: targetLanguage), token: nil)
         }
     }
 

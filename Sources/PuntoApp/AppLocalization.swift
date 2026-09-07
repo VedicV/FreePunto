@@ -34,6 +34,9 @@ enum AppText {
         case settingsTitle
         case globalHotkeysUnavailable
         case globalHotkeysUnavailableDetail
+        case commandBusy
+        case noReliableTarget
+        case replacementUnconfirmed
         case couldNotReplaceText
         case inputSourceUnavailable
         case addInputSourceDetail
@@ -121,6 +124,9 @@ enum AppText {
         .globalHotkeysUnavailable: "Горячие клавиши недоступны",
         .globalHotkeysUnavailableDetail:
             "Разрешите Accessibility и Input Monitoring для FreePunto, затем перезапустите приложение. Если разрешения уже включены, удалите FreePunto из списка (кнопкой «-»), добавьте заново, полностью выйдите из приложения и запустите его еще раз.",
+        .commandBusy: "Команда ещё выполняется.",
+        .noReliableTarget: "Не удалось подтвердить текстовую цель. Замена не выполнялась.",
+        .replacementUnconfirmed: "Результат замены не подтверждён. Проверьте текст перед повтором.",
         .couldNotReplaceText: "Не удалось заменить текст",
         .inputSourceUnavailable: "Раскладка недоступна",
         .addInputSourceDetail: "Добавьте раскладку %@ в настройках клавиатуры macOS.",
@@ -174,6 +180,9 @@ enum AppText {
         .globalHotkeysUnavailable: "Гарячі клавіші недоступні",
         .globalHotkeysUnavailableDetail:
             "Дозвольте Accessibility та Input Monitoring для FreePunto, потім перезапустіть застосунок. Якщо дозволи вже надано, видаліть FreePunto зі списку (кнопкою «-»), додайте знову, повністю вийдіть із застосунку та запустіть його ще раз.",
+        .commandBusy: "Команда ще виконується.",
+        .noReliableTarget: "Не вдалося підтвердити текстову ціль. Заміну не виконано.",
+        .replacementUnconfirmed: "Результат заміни не підтверджено. Перевірте текст перед повтором.",
         .couldNotReplaceText: "Не вдалося замінити текст",
         .inputSourceUnavailable: "Розкладка недоступна",
         .addInputSourceDetail: "Додайте розкладку %@ у налаштуваннях клавіатури macOS.",
@@ -227,6 +236,9 @@ enum AppText {
         .globalHotkeysUnavailable: "Global hotkeys are unavailable",
         .globalHotkeysUnavailableDetail:
             "Enable Accessibility and Input Monitoring for FreePunto, then restart the app. If permissions are already enabled, remove FreePunto from the list (using the '-' button), add it again, fully quit the app, and launch it one more time.",
+        .commandBusy: "A text command is already running.",
+        .noReliableTarget: "The text target could not be verified. Nothing was replaced.",
+        .replacementUnconfirmed: "The replacement could not be confirmed. Check the text before retrying.",
         .couldNotReplaceText: "Could not replace text",
         .inputSourceUnavailable: "Input source is not available",
         .addInputSourceDetail: "Add %@ keyboard layout in macOS System Settings.",

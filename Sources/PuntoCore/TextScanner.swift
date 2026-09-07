@@ -4,6 +4,8 @@ import Foundation
 public struct ScannedWord: Equatable, Sendable {
     public let word: String
     public let wordRange: Range<String.Index>
+    /// Точні горизонтальні пробіли; tab/NBSP не відновлюються за самою кількістю.
+    public let trailingWhitespace: String
     public let trailingSpacesCount: Int
     public let trailingSpacesRange: Range<String.Index>
     public let fullRange: Range<String.Index>
@@ -13,8 +15,10 @@ public struct ScannedWord: Equatable, Sendable {
         wordRange: Range<String.Index>,
         trailingSpacesCount: Int,
         trailingSpacesRange: Range<String.Index>,
-        fullRange: Range<String.Index>
+        fullRange: Range<String.Index>,
+        trailingWhitespace: String = ""
     ) {
+        self.trailingWhitespace = trailingWhitespace
         self.word = word
         self.wordRange = wordRange
         self.trailingSpacesCount = trailingSpacesCount
@@ -29,27 +33,13 @@ public enum TextScanner {
     public static func scanLastWord<T: StringProtocol>(in text: T) -> ScannedWord? {
         var cursor = text.endIndex
 
-        // 1. Пропускаємо кінцеві переводи рядків (\r, \n), якщо вони є,
-        // щоб випадковий newline не рахувався як кінцеві пробіли для Backspace.
-        while cursor > text.startIndex {
-            let prev = text.index(before: cursor)
-            if text[prev].isNewline {
-                cursor = prev
-            } else {
-                break
-            }
-        }
-
+        // Вхід завершується біля фактичної каретки. Перенесення рядка не можна
+        // перестрибувати до попередньої команди, навіть якщо там є схоже слово.
         let lineEnd = cursor
-
-        // 2. Рахуємо тільки горизонтальні пробіли/таби (trailing spaces)
         while cursor > text.startIndex {
             let prev = text.index(before: cursor)
-            if text[prev].isWhitespace && !text[prev].isNewline {
-                cursor = prev
-            } else {
-                break
-            }
+            if text[prev].isNewline { return nil }
+            if text[prev].isWhitespace { cursor = prev } else { break }
         }
 
         let wordEnd = cursor
@@ -81,7 +71,8 @@ public enum TextScanner {
             wordRange: wordStart..<wordEnd,
             trailingSpacesCount: trailingSpacesCount,
             trailingSpacesRange: trailingSpacesRange,
-            fullRange: wordStart..<lineEnd
+            fullRange: wordStart..<lineEnd,
+            trailingWhitespace: String(text[trailingSpacesRange])
         )
     }
 
@@ -97,4 +88,3 @@ public enum TextScanner {
         return normalized.hasSuffix("\n")
     }
 }
-

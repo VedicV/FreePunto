@@ -21,6 +21,7 @@ let enBack = LayoutTransformer.transform(uaAngled, from: .ukrainian, to: .englis
 assertEqual(enBack, enAngled, "БруддщЮ -> <hello>")
 
 print("\n--- Test 1b: DynamicLayoutMapper character translation (. -> ю, , -> б) ---")
+if ProcessInfo.processInfo.environment["PUNTO_TEST_SYSTEM_LAYOUTS"] == "1" {
 let enToRuDot = DynamicLayoutMapper.shared.translateCharacter(".", from: .english, to: .russian)
 assertEqual(enToRuDot, "ю", "Dynamic translate '.' EN -> RU must be 'ю'")
 
@@ -29,6 +30,10 @@ assertEqual(enToUaDot, "ю", "Dynamic translate '.' EN -> UA must be 'ю'")
 
 let enToRuComma = DynamicLayoutMapper.shared.translateCharacter(",", from: .english, to: .russian)
 assertEqual(enToRuComma, "б", "Dynamic translate ',' EN -> RU must be 'б'")
+
+} else {
+    print("SKIP: system-layout checks (set PUNTO_TEST_SYSTEM_LAYOUTS=1 with EN/RU/UA installed)")
+}
 
 let testWord = LayoutTransformer.transform("cktle.otve", from: .english, to: .russian)
 assertEqual(testWord, "следующему", "cktle.otve -> следующему (not следу,щему)")
@@ -111,14 +116,14 @@ print("\n--- Test 5b: TextScanner.scanLastWord & UTF-16 word range safety (no ea
 // 1. Newline handling: newlines should NOT count as trailing spaces
 let textWithNewline = "предыдущее слово\n"
 let newlineScan = TextScanner.scanLastWord(in: textWithNewline)
-assertEqual(newlineScan?.word, "слово", "Word before newline")
-assertEqual(newlineScan?.trailingSpacesCount, 0, "Trailing spaces before newline should be 0, not 1")
+assertEqual(newlineScan == nil, true, "No previous-line target at empty current line")
+
 
 // 2. CRLF handling: \r\n should NOT count as trailing spaces
 let textWithCRLF = "предыдущее слово\r\n"
 let crlfScan = TextScanner.scanLastWord(in: textWithCRLF)
-assertEqual(crlfScan?.word, "слово", "Word before CRLF")
-assertEqual(crlfScan?.trailingSpacesCount, 0, "Trailing spaces before CRLF should be 0")
+assertEqual(crlfScan == nil, true, "No previous-line target after CRLF")
+
 
 // 3. Emojis before word: UTF-16 range must strictly point to the word and never eat the preceding space
 let textWithEmoji = "😊 предыдущее слово и еще"
@@ -274,7 +279,7 @@ let genericVsCodeTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "user@mac:~$ "
 )
-assertEqual(genericVsCodeTerminal, true, "Generic VS Code AX element with 'user@mac:~$ ' must be classified as terminal")
+assertEqual(genericVsCodeTerminal, false, "Prompt text alone is not terminal identity")
 
 // 2. Terminal prompt with zsh: "user@mac:~% "
 let zshTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -284,7 +289,7 @@ let zshTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "user@mac:~% "
 )
-assertEqual(zshTerminal, true, "Generic AX element with 'user@mac:~% ' must be classified as terminal")
+assertEqual(zshTerminal, false, "Prompt text alone is not terminal identity")
 
 // 3. Terminal prompt NOT at start of line: "[12:34:56] user@host:~% ls"
 let midLineZsh = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -294,7 +299,7 @@ let midLineZsh = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "[12:34:56] user@host:~% ls"
 )
-assertEqual(midLineZsh, true, "Prompt not at start of line '[12:34:56] user@host:~% ls' must be classified as terminal")
+assertEqual(midLineZsh, false, "Prompt text alone is not terminal identity")
 
 // 4. Terminal prompt with Starship in middle of line: "~/projects/Punto (main) ❯ git status"
 let starshipTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -304,7 +309,7 @@ let starshipTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "~/projects/Punto (main) ❯ git status"
 )
-assertEqual(starshipTerminal, true, "Starship prompt with ❯ must be classified as terminal")
+assertEqual(starshipTerminal, false, "Prompt text alone is not terminal identity")
 
 // 5. Terminal prompt with virtualenv and root: "(venv) root@server:/var/log# cat app.log"
 let venvTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -314,7 +319,7 @@ let venvTerminal = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "(venv) root@server:/var/log# cat app.log"
 )
-assertEqual(venvTerminal, true, "Virtualenv root prompt must be classified as terminal")
+assertEqual(venvTerminal, false, "Prompt text alone is not terminal identity")
 
 // 6. Normal code with $, %, > must NOT be classified as terminal
 let normalCode1 = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -364,7 +369,7 @@ let textFieldWithPrompt = AppEnvironmentClassifier.isIntegratedTerminal(
     identifier: nil,
     value: "user@mac:~$ ls"
 )
-assertEqual(textFieldWithPrompt, true, "AXTextField with prompt in value must be classified as terminal")
+assertEqual(textFieldWithPrompt, false, "Prompt text alone is not terminal identity")
 
 // 11. Description containing 'English' or other words ending in 'sh' must NOT match shell 'sh'
 let englishDescription = AppEnvironmentClassifier.isIntegratedTerminal(
@@ -395,14 +400,14 @@ let browserEditStrategy = AppEnvironmentClassifier.determineReadStrategy(
 )
 assertEqual(browserEditStrategy, .browserEditableCmdCFirst, "Browser editable must return .browserEditableCmdCFirst")
 
-// 3. Browser non-editable normal page -> .none (must return nil, no synthetic keys)
+// 3. Звичайна нередагована вебсторінка -> явне виділення через Cmd+C
 let browserNormalStrategy = AppEnvironmentClassifier.determineReadStrategy(
     appKind: .browser,
     hasAccessibility: true,
     isEditable: false,
     isConfirmedGrid: false
 )
-assertEqual(browserNormalStrategy, .none, "Browser non-editable normal page must return .none")
+assertEqual(browserNormalStrategy, .browserSelectionCmdC, "Browser non-editable normal page reads explicit selection")
 
 // 4. Browser confirmed grid -> .browserConfirmedGrid
 let browserGridStrategy = AppEnvironmentClassifier.determineReadStrategy(
@@ -413,23 +418,23 @@ let browserGridStrategy = AppEnvironmentClassifier.determineReadStrategy(
 )
 assertEqual(browserGridStrategy, .browserConfirmedGrid, "Browser confirmed grid must return .browserConfirmedGrid")
 
-// 5. Standalone terminal -> .terminalActiveLineAXValue
+// 5. Окремий термінал -> явне виділення або перевірений промпт
 let standaloneStrategy = AppEnvironmentClassifier.determineReadStrategy(
     appKind: .standaloneTerminal,
     hasAccessibility: true,
     isEditable: false,
     isConfirmedGrid: false
 )
-assertEqual(standaloneStrategy, .terminalActiveLineAXValue, "Standalone terminal must return .terminalActiveLineAXValue")
+assertEqual(standaloneStrategy, .terminalSelectionOrPrompt, "Standalone terminal must use safe GUI strategy")
 
-// 6. Integrated terminal -> .terminalActiveLineAXValue
+// 6. Інтегрований термінал -> явне виділення або перевірений промпт
 let integratedStrategy = AppEnvironmentClassifier.determineReadStrategy(
     appKind: .integratedTerminal,
     hasAccessibility: true,
     isEditable: true,
     isConfirmedGrid: false
 )
-assertEqual(integratedStrategy, .terminalActiveLineAXValue, "Integrated terminal must return .terminalActiveLineAXValue")
+assertEqual(integratedStrategy, .terminalSelectionOrPrompt, "Integrated terminal must use safe GUI strategy")
 
 print("\n--- Test 13: Browser confirmed grid context detection ---")
 // 1. Element with role AXCell
@@ -554,22 +559,29 @@ assertEqual(AppEnvironmentClassifier.terminalPromptLastWord(from: "user@mac:~$ c
 assertEqual(AppEnvironmentClassifier.terminalPromptLastWord(from: "user@mac:~/repo$ git status"), "status", "Prompt command 'status'")
 assertEqual(AppEnvironmentClassifier.terminalPromptLastWord(from: "❯ cargo build"), "build", "Starship prompt command 'build'")
 assertEqual(AppEnvironmentClassifier.terminalPromptLastWord(from: "➜ punto-core git:(main) csh"), "csh", "Zsh prompt command 'csh'")
-
-print("\n--- Test 18: Integrated terminal replacement plan (Backspace wordLength times, Cmd+V, no Ctrl+W) ---")
-let plan5 = AppEnvironmentClassifier.integratedTerminalReplacementPlan(wordLength: 5, replacement: "hello")
-assertEqual(plan5.count, 2, "Integrated terminal plan must have exactly 2 actions")
-assertEqual(plan5[0], SyntheticKeyAction.backspace(count: 5), "Action 0: Backspace exactly 5 times")
-assertEqual(plan5[1], SyntheticKeyAction.cmdV(text: "hello"), "Action 1: Cmd+V with replacement text")
-assertEqual(plan5.contains(.ctrlW), false, "Integrated terminal plan must NEVER contain Ctrl+W")
-assertEqual(plan5.contains(.cmdC), false, "Integrated terminal plan must NEVER contain Cmd+C")
-
-let plan0 = AppEnvironmentClassifier.integratedTerminalReplacementPlan(wordLength: 0, replacement: "")
-assertEqual(plan0.isEmpty, true, "Plan with wordLength 0 is empty")
+assertEqual(AppEnvironmentClassifier.terminalPromptTarget(from: "❯ cargo ghbdtn"),
+            AppEnvironmentClassifier.TerminalPromptTarget(word: "ghbdtn", backspaceCount: 6),
+            "Terminal target carries exact Character backspace count")
 
 print("\n--- Test 19: Firefox routing & outcome invariants ---")
 // 1. Firefox must NOT use AXSelectedTextRange
 assertEqual(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: "org.mozilla.firefox"), false, "Firefox does NOT support AXSelectedTextRange")
 assertEqual(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: "com.google.Chrome"), true, "Chrome supports AXSelectedTextRange")
+assertEqual(AppEnvironmentClassifier.isChromium(bundleIdentifier: "com.google.Chrome"), true, "Chrome uses Chromium keyboard fallback")
+assertEqual(AppEnvironmentClassifier.isChromium(bundleIdentifier: "com.brave.Browser"), true, "Brave uses Chromium keyboard fallback")
+assertEqual(AppEnvironmentClassifier.isChromium(bundleIdentifier: "org.mozilla.firefox"), false, "Firefox is not Chromium")
+assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+    bundleIdentifier: "com.google.antigravity-ide",
+    isConfirmedEditorSurface: true,
+    isCopiedBrowserSelection: false), true, "Antigravity Monaco paste uses focused-element verification")
+assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+    bundleIdentifier: "com.google.Chrome",
+    isConfirmedEditorSurface: false,
+    isCopiedBrowserSelection: true), true, "Chromium copied selection uses focused-element verification")
+assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+    bundleIdentifier: "com.apple.Safari",
+    isConfirmedEditorSurface: false,
+    isCopiedBrowserSelection: true), false, "Unlisted browser does not use the Chromium exception")
 
 // 2. Strategy for Firefox editable fields must start with Cmd+C
 let ffKind = AppEnvironmentClassifier.appKind(bundleIdentifier: "org.mozilla.firefox")
@@ -588,5 +600,9 @@ let failedOutcome: ReplaceOutcome = .failed
 let verifiedOutcome: ReplaceOutcome = .successVerified
 assertEqual(deliveredUnconfirmed != failedOutcome, true, "deliveredUnconfirmedAX does NOT equal failed (avoids false error)")
 assertEqual(deliveredUnconfirmed != verifiedOutcome, true, "deliveredUnconfirmedAX does NOT equal successVerified (avoids corrupting sequential cycle)")
+
+runConversionChecks()
+runTerminalChecks()
+runInteractionChecks()
 
 print("\n🎉 ALL PUNTOCORE AUTONOMOUS TESTS PASSED!")

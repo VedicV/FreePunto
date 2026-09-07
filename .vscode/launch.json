@@ -39,6 +39,26 @@
             "target": "PuntoCoreTestsRunner",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release PuntoCoreTestsRunner"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Punto}",
+            "name": "Debug punto-transform",
+            "target": "punto-transform",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug punto-transform"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Punto}",
+            "name": "Release punto-transform",
+            "target": "punto-transform",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release punto-transform"
         }
     ]
 }

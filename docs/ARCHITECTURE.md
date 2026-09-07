@@ -1,5 +1,7 @@
 # Архітектура
 
+> Історичний план: опис текстового I/O нижче частково застарів. Чинний контракт та обмеження: [TEXT_INTERACTION_CONTRACT.md](TEXT_INTERACTION_CONTRACT.md).
+
 ## Напрям
 
 Перша версія - нативний macOS-застосунок у рядку меню на Swift, SwiftUI та AppKit.

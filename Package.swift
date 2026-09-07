@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .library(name: "PuntoCore", targets: ["PuntoCore"]),
         .executable(name: "FreePunto", targets: ["FreePunto"]),
+        .executable(name: "punto-transform", targets: ["PuntoCLI"]),
         .executable(name: "PuntoCoreTestsRunner", targets: ["PuntoCoreTestsRunner"])
     ],
     targets: [
@@ -19,6 +20,11 @@ let package = Package(
             name: "FreePunto",
             dependencies: ["PuntoCore"],
             path: "Sources/PuntoApp"
+        ),
+        .executableTarget(
+            name: "PuntoCLI",
+            dependencies: ["PuntoCore"],
+            path: "Sources/PuntoCLI"
         ),
         .executableTarget(
             name: "PuntoCoreTestsRunner",

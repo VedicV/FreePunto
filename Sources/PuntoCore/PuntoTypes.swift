@@ -236,16 +236,8 @@ public struct PuntoSettings: Codable, Sendable, Equatable {
 // * -- Результат виконання заміни тексту в цільовому застосунку --
 public enum ReplaceOutcome: Equatable, Sendable {
     case successVerified          // Текст замінено і підтверджено через AX або платформений механізм
-    case deliveredUnconfirmedAX   // Події вставки доставлено, але AX не оновився (Firefox, термінали)
-    case failed                   // Не вдалося виконати або доставити заміну
-}
-
-// * -- Дії синтетичного введення для тестування планів заміни --
-public enum SyntheticKeyAction: Equatable, Sendable {
-    case backspace(count: Int)
-    case ctrlW
-    case cmdC
-    case cmdV(text: String)
+    case deliveredUnconfirmedAX   // Запис спробувано; фактичний результат, включно з частковим, невідомий
+    case failed                   // Запис не розпочато; підготовка могла тимчасово змінити виділення
 }
 
 // * -- Результат успішного перетворення тексту --

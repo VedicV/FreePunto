@@ -47,6 +47,9 @@ FreePunto is a local macOS menu bar utility for manually converting selected tex
 
 ## Документи
 
+- [Чинний контракт текстової взаємодії (I/O)](docs/TEXT_INTERACTION_CONTRACT.md) — гарантії, перевірки та обмеження поточної реалізації.
+- [Локальний zsh-адаптер](docs/TERMINAL_INTEGRATION.md) — окремий віджет для термінального введення.
+
 - [docs/DOWNLOAD.md](docs/DOWNLOAD.md) - пряме завантаження DMG і встановлення.
 - [docs/INSTALL_USAGE.md](docs/INSTALL_USAGE.md) - встановлення, запуск і використання.
 - [docs/TEXT_INTERACTION_SCENARIOS.md](docs/TEXT_INTERACTION_SCENARIOS.md) - сценарії читання і заміни тексту в різних застосунках.

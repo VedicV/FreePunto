@@ -56,31 +56,138 @@ final class PuntoCoreTests: XCTestCase {
         )
         XCTAssertEqual(
             LayoutTransformer.transform("ІЇЄ Ґ", from: .ukrainian, to: .english),
-            "S]' `"
+            "S}\" ~"
         )
     }
 
     func testSequentialModeCyclesThroughEnglishRussianAndUkrainian() {
         let engine = PuntoEngine()
         let settings = PuntoSettings(switchingMode: .sequential)
-
-        let russian = engine.convertLayout("ghbdtn", settings: settings)
-        XCTAssertEqual(russian.replacementText, "привет")
+        let russian = engine.convertLayout("csh", settings: settings)
+        XCTAssertEqual(russian.replacementText, "сыр")
         XCTAssertEqual(russian.sourceLanguage, .english)
         XCTAssertEqual(russian.targetLanguage, .russian)
         XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings), .ukrainian)
 
         let ukrainian = engine.convertLayout(russian.replacementText, settings: settings)
-        XCTAssertEqual(ukrainian.replacementText, "привет")
+        XCTAssertEqual(ukrainian.replacementText, "сір")
         XCTAssertEqual(ukrainian.sourceLanguage, .russian)
         XCTAssertEqual(ukrainian.targetLanguage, .ukrainian)
         XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings), .english)
 
         let english = engine.convertLayout(ukrainian.replacementText, settings: settings)
-        XCTAssertEqual(english.replacementText, "ghbdtn")
+        XCTAssertEqual(english.replacementText, "csh")
         XCTAssertEqual(english.sourceLanguage, .ukrainian)
         XCTAssertEqual(english.targetLanguage, .english)
         XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings), .russian)
+    }
+
+    func testSequentialModeSkipsIdenticalTextStep() {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let first = engine.convertLayout("ghbdtn", settings: settings)
+        XCTAssertEqual(first.replacementText, "привет")
+        XCTAssertEqual(first.targetLanguage, .russian)
+        let second = engine.convertLayout(first.replacementText, settings: settings)
+        XCTAssertEqual(second.sourceLanguage, .russian)
+        XCTAssertEqual(second.targetLanguage, .english)
+        XCTAssertEqual(second.replacementText, "ghbdtn")
+        let third = engine.convertLayout(second.replacementText, settings: settings)
+        XCTAssertEqual(third.targetLanguage, .russian)
+        XCTAssertEqual(third.replacementText, "привет")
+    }
+
+    func testPreparedCycleCommitsFirstSecondAndThirdVerifiedWrites() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        var text = "csh"
+        for (expectedText, expectedLanguage) in [("сыр", PuntoLanguage.russian), ("сір", .ukrainian), ("csh", .english)] {
+            let prepared = try XCTUnwrap(engine.prepareLayoutConversion(text, settings: settings, targetIdentity: "field-A"))
+            XCTAssertEqual(prepared.result.replacementText, expectedText)
+            XCTAssertEqual(prepared.result.targetLanguage, expectedLanguage)
+            XCTAssertTrue(engine.commitPendingConversion(prepared.token))
+            XCTAssertFalse(engine.commitPendingConversion(prepared.token))
+            text = prepared.result.replacementText
+        }
+    }
+
+    func testIdenticalTextInDifferentTargetDoesNotInheritCycleLanguage() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let first = try XCTUnwrap(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-A"))
+        XCTAssertTrue(engine.commitPendingConversion(first.token))
+        let other = try XCTUnwrap(engine.prepareLayoutConversion("привет", settings: settings, currentLanguage: .ukrainian, targetIdentity: "field-B"))
+        XCTAssertEqual(other.result.sourceLanguage, .ukrainian)
+        XCTAssertEqual(other.result.replacementText, "ghbdtn")
+    }
+
+    func testResetAndSupersedingPreparationRejectStaleCompletions() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let old = try XCTUnwrap(engine.prepareLayoutConversion("csh", settings: settings, targetIdentity: "field-A"))
+        engine.resetContext()
+        XCTAssertFalse(engine.commitPendingConversion(old.token))
+        let next = try XCTUnwrap(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-B"))
+        XCTAssertFalse(engine.discardPendingConversion(old.token))
+        XCTAssertFalse(engine.recordUnknownConversion(old.token))
+        XCTAssertTrue(engine.commitPendingConversion(next.token))
+
+        let pending = try XCTUnwrap(engine.prepareLayoutConversion("привет", settings: settings, targetIdentity: "field-B"))
+        let newer = try XCTUnwrap(engine.prepareLayoutConversion("csh", settings: settings, targetIdentity: "field-C"))
+        XCTAssertFalse(engine.commitPendingConversion(pending.token))
+        XCTAssertFalse(engine.discardPendingConversion(pending.token))
+        XCTAssertTrue(engine.commitPendingConversion(newer.token))
+    }
+
+    func testUnknownReceiptBlocksStaleReplayAndReconcilesFreshResult() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let first = try XCTUnwrap(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-A"))
+        XCTAssertTrue(engine.recordUnknownConversion(first.token))
+        XCTAssertFalse(engine.commitPendingConversion(first.token))
+        XCTAssertEqual(engine.nextLayoutLanguageHint(settings: settings), .russian)
+        for _ in 0..<3 {
+            XCTAssertNil(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-A"))
+        }
+        let fresh = try XCTUnwrap(engine.prepareLayoutConversion("привет", settings: settings, currentLanguage: .ukrainian, targetIdentity: "field-A"))
+        XCTAssertEqual(fresh.result.sourceLanguage, .russian)
+        XCTAssertEqual(fresh.result.replacementText, "ghbdtn")
+        XCTAssertTrue(engine.commitPendingConversion(fresh.token))
+    }
+
+    func testUnknownReceiptClearsOnDifferentTargetExternalTextAndReset() throws {
+        let settings = PuntoSettings(switchingMode: .sequential)
+        for resolution in ["other-target", "external-text", "reset"] {
+            let engine = PuntoEngine()
+            let first = try XCTUnwrap(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-A"))
+            XCTAssertTrue(engine.recordUnknownConversion(first.token))
+            if resolution == "reset" { engine.resetContext() }
+            let text = resolution == "external-text" ? "other" : "ghbdtn"
+            let target = resolution == "other-target" ? "field-B" : "field-A"
+            XCTAssertNotNil(engine.prepareLayoutConversion(text, settings: settings, targetIdentity: target))
+        }
+    }
+
+    func testFailedWriteClearsPreviouslyCommittedContext() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let first = try XCTUnwrap(engine.prepareLayoutConversion("ghbdtn", settings: settings, targetIdentity: "field-A"))
+        XCTAssertTrue(engine.commitPendingConversion(first.token))
+        let second = try XCTUnwrap(engine.prepareLayoutConversion("привет", settings: settings, targetIdentity: "field-A"))
+        XCTAssertTrue(engine.discardPendingConversion(second.token))
+        let retry = try XCTUnwrap(engine.prepareLayoutConversion("привет", settings: settings, currentLanguage: .ukrainian, targetIdentity: "field-A"))
+        XCTAssertEqual(retry.result.sourceLanguage, .ukrainian)
+    }
+
+    func testOtherTransformationInvalidatesPendingToken() throws {
+        let engine = PuntoEngine()
+        let settings = PuntoSettings(switchingMode: .sequential)
+        let first = try XCTUnwrap(engine.prepareLayoutConversion("csh", settings: settings, targetIdentity: "field-A"))
+        _ = engine.convertCase("test", mode: .title)
+        XCTAssertFalse(engine.commitPendingConversion(first.token))
+        let second = try XCTUnwrap(engine.prepareLayoutConversion("csh", settings: settings, targetIdentity: "field-A"))
+        _ = engine.transliterate("test", targetLanguage: .russian)
+        XCTAssertFalse(engine.commitPendingConversion(second.token))
     }
 
     func testFixedTargetModeUsesConfiguredTargetForEnglishAndEnglishForCyrillic() {
@@ -149,10 +256,10 @@ final class PuntoCoreTests: XCTestCase {
         XCTAssertEqual(mixedRussian.targetLanguage, .english)
     }
 
-    func testPunctuationWhitespaceAndUnmappedCharactersArePreserved() {
+    func testLayoutMapsSingleDotAndPreservesEllipsisWhitespaceAndUnmappedCharacters() {
         XCTAssertEqual(
             LayoutTransformer.transform("ghbdtn.", from: .english, to: .russian),
-            "привет."
+            "приветю"
         )
         XCTAssertEqual(
             LayoutTransformer.transform("ghbdtn...", from: .english, to: .russian),

@@ -8,6 +8,7 @@ final class HotKeyController {
         var letterCase: () -> Void
         var transliteration: () -> Void
         var pause: () -> Void
+        var interaction: () -> Void = {}
     }
 
     private let settingsProvider: () -> PuntoSettings
@@ -134,6 +135,7 @@ final class HotKeyController {
         // Будь-який клік миші скасовує кандидата на одиночне натискання Control.
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             singleControlCandidate = false
+            actions.interaction()
             return Unmanaged.passUnretained(event)
         }
 
@@ -176,6 +178,7 @@ final class HotKeyController {
             return nil
         }
 
+        actions.interaction()
         return Unmanaged.passUnretained(event)
     }
 

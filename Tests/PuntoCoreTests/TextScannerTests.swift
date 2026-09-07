@@ -40,18 +40,18 @@ final class TextScannerTests: XCTestCase {
         XCTAssertNil(TextScanner.lastWord(in: "   "))
     }
 
-    // * -- Слово довше 40 символів → nil --
+    // * -- Слово довше 300 символів → nil --
     func testLastWordTooLong() {
-        let longWord = String(repeating: "a", count: 41)
+        let longWord = String(repeating: "a", count: 301)
         XCTAssertNil(TextScanner.lastWord(in: longWord))
     }
 
-    // * -- Слово рівно 40 символів → повертається --
-    func testLastWordExactly40() {
-        let word40 = String(repeating: "a", count: 40)
-        let result = TextScanner.lastWord(in: word40)
+    // * -- Слово рівно 300 символів → повертається --
+    func testLastWordExactly300() {
+        let word300 = String(repeating: "a", count: 300)
+        let result = TextScanner.lastWord(in: word300)
         XCTAssertNotNil(result)
-        XCTAssertEqual(result?.word, word40)
+        XCTAssertEqual(result?.word, word300)
         XCTAssertEqual(result?.trailingSpacesCount, 0)
     }
 
@@ -65,14 +65,21 @@ final class TextScannerTests: XCTestCase {
         XCTAssertEqual(result?.trailingSpacesCount, 0)
     }
 
-    // * -- Багаторядковий текст з кінцевим переносом → trailingSpacesCount враховує \n --
-    func testLastWordMultilineWithTrailingNewline() {
-        // "hello world\n" — \n є whitespace, тому endIndex зсувається назад на 1,
-        // trailingSpacesCount == 1
-        let result = TextScanner.lastWord(in: "hello world\n")
-        XCTAssertNotNil(result)
-        XCTAssertEqual(result?.word, "world")
-        XCTAssertEqual(result?.trailingSpacesCount, 1)
+    func testLastWordDoesNotCrossTrailingLineBoundary() {
+        for text in ["hello world\n", "hello world\r\n", "word\n \t"] {
+            XCTAssertNil(TextScanner.lastWord(in: text))
+        }
+    }
+
+    func testExactWhitespaceAndSubstringRangesPreserveCaretSuffix() {
+        let text = "😀 cafe\u{0301} ghbdtn \t\u{00A0} suffix"
+        let caret = text.index(text.endIndex, offsetBy: -7)
+        let scanned = TextScanner.scanLastWord(in: text[..<caret])!
+        XCTAssertEqual(scanned.trailingWhitespace, " \t\u{00A0}")
+        XCTAssertEqual(String(text[scanned.wordRange]), "ghbdtn")
+        var result = text
+        result.replaceSubrange(scanned.wordRange, with: "привет")
+        XCTAssertEqual(result, "😀 cafe\u{0301} привет \t\u{00A0} suffix")
     }
 
     // MARK: - looksLikeAutomaticLineCopy
