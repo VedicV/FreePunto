@@ -52,7 +52,7 @@ FreePunto is a local macOS menu bar utility for manually converting selected tex
 
 - [docs/DOWNLOAD.md](docs/DOWNLOAD.md) - пряме завантаження DMG і встановлення.
 - [docs/INSTALL_USAGE.md](docs/INSTALL_USAGE.md) - встановлення, запуск і використання.
-- [docs/TEXT_INTERACTION_SCENARIOS.md](docs/TEXT_INTERACTION_SCENARIOS.md) - сценарії читання і заміни тексту в різних застосунках.
+- [docs/TESTING_AND_MACOS_PERMISSIONS.md](docs/TESTING_AND_MACOS_PERMISSIONS.md) - робота з дозволами macOS (TCC).
 - [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) - продуктовий план і перша версія.
 - [docs/FEATURES.md](docs/FEATURES.md) - точний список функцій.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - macOS-архітектура.
