@@ -1,10 +1,10 @@
 # Завантаження FreePunto
 
-## Пряме завантаження DMG
+## Завантаження з GitHub Releases
 
-[Завантажити FreePunto-0.3.0.dmg](https://github.com/VedicV/FreePunto/releases/download/v0.3.0/FreePunto-0.3.0.dmg)
+[Завантажити FreePunto (GitHub Releases)](https://github.com/VedicV/FreePunto/releases)
 
-Це посилання веде на файл DMG у GitHub Releases. Воно почне працювати після публікації релізу `v0.3.0` і завантаження asset-файлу `FreePunto-0.3.0.dmg`.
+Файли DMG для встановлення доступні на сторінці [Releases](https://github.com/VedicV/FreePunto/releases).
 
 ## Встановлення
 
