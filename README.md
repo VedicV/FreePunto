@@ -6,7 +6,7 @@ FreePunto is a local macOS menu bar utility for manually converting selected tex
 
 ## Завантаження
 
-[Завантажити FreePunto-0.1.2.dmg](https://github.com/VedicV/FreePunto/releases/download/v0.1.2/FreePunto-0.1.2.dmg)
+[Завантажити FreePunto-0.3.0.dmg](https://github.com/VedicV/FreePunto/releases/download/v0.3.0/FreePunto-0.3.0.dmg)
 
 Деталі встановлення: [docs/DOWNLOAD.md](docs/DOWNLOAD.md).
 
@@ -94,7 +94,7 @@ open dist/FreePunto.app
 
 ```bash
 ./scripts/build_dmg.sh
-open dist/FreePunto-0.1.2.dmg
+open dist/FreePunto-0.3.0.dmg
 ```
 
 Для глобальних гарячих клавіш, читання і заміни тексту macOS може вимагати дозволи Accessibility та Input Monitoring.

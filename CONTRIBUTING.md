@@ -27,7 +27,7 @@ open dist/FreePunto.app
 
 ```bash
 ./scripts/build_dmg.sh
-open dist/FreePunto-0.1.2.dmg
+open dist/FreePunto-0.3.0.dmg
 ```
 
 ## Правила змін

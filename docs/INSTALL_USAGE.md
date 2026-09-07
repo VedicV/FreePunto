@@ -57,7 +57,7 @@ FreePunto не відкриває звичайне вікно. Після зап
 Підсумковий файл:
 
 ```text
-dist/FreePunto-0.1.2.dmg
+dist/FreePunto-0.3.0.dmg
 ```
 
 Усередині DMG лежить `FreePunto.app` і ярлик `Applications`. Відкрийте DMG і перетягніть `FreePunto.app` до `Applications`.
