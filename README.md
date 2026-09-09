@@ -10,6 +10,9 @@ FreePunto is a local macOS menu bar utility for manually converting selected tex
 
 Деталі встановлення: [docs/DOWNLOAD.md](docs/DOWNLOAD.md).
 
+> [!IMPORTANT]
+> Якщо під час першого запуску macOS показує повідомлення **“FreePunto” Not Opened**, натисніть **Done**, відкрийте **System Settings → Privacy & Security**, прокрутіть сторінку вниз і натисніть **Open Anyway** біля повідомлення про FreePunto. Після підтвердження знову відкрийте застосунок і надайте йому доступ у розділі **Accessibility**. Робіть це лише для FreePunto, завантаженого з офіційної сторінки Releases за посиланням вище.
+
 ## Передісторія
 
 Я давно користувався в роботі Punto Switcher, бо часто доводилося працювати різними мовами й постійно перемикатися між ними. Наприклад: у Google Sheets формули російською, JS-код англійською, переписки українською.
