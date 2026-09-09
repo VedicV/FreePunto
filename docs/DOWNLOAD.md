@@ -28,6 +28,17 @@
 
 Назви кнопок залежать від мови macOS: **Open Anyway** може називатися **«Відкрити однаково»** або **«Все одно відкрити»**.
 
+#### Альтернатива через Термінал
+
+Якщо кнопка **Open Anyway** не з'явилася, відкрийте застосунок **Terminal**, по черзі виконайте дві команди:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/FreePunto.app
+open /Applications/FreePunto.app
+```
+
+Перша команда знімає карантинну позначку лише з FreePunto, друга — запускає застосунок. Не додавайте `sudo` і не застосовуйте `xattr` до всієї папки `/Applications`.
+
 > [!IMPORTANT]
 > Дозволяйте запуск лише тоді, коли ви завантажили FreePunto з [офіційної сторінки GitHub Releases](https://github.com/VedicV/FreePunto/releases). Не вимикайте Gatekeeper та інші механізми захисту macOS повністю.
 
