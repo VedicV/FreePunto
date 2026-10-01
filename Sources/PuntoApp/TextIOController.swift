@@ -278,7 +278,13 @@ final class TextIOController {
         }
         let browserCopiedSelection = target.origin == .copiedSelection
             && AppEnvironmentClassifier.isBrowser(bundleIdentifier: target.bundleIdentifier)
-        guard isEditable(target.element) || browserCopiedSelection else { return .failed }
+
+        // Для IDE та Electron-редакторів (VS Code, Codex) дозволяємо заміну виділеного слова,
+        // якщо поверхня підтверджена як редакторська, навіть коли AX-властивість isEditable не виставлена.
+        let ideCopiedSelection = target.origin == .copiedSelection
+            && AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: target.bundleIdentifier)
+            && isConfirmedEditorSurface(target.element)
+        guard isEditable(target.element) || browserCopiedSelection || ideCopiedSelection else { return .failed }
         let inserted = replacement + target.suffix
         let expected = target.value == target.original ? inserted : target.value.flatMap { value in
             target.replacementRange.flatMap { range in

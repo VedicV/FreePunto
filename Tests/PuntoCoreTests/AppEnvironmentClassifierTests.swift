@@ -9,6 +9,8 @@ final class AppEnvironmentClassifierTests: XCTestCase {
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.todesktop.230313mzl4w4u92"))
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.google.antigravity"))
         XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.google.antigravity-ide"))
+        XCTAssertTrue(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.openai.codex"))
+        XCTAssertEqual(AppEnvironmentClassifier.appKind(bundleIdentifier: "com.openai.codex"), .codeEditor)
         XCTAssertFalse(AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: "com.apple.Terminal"))
     }
 
@@ -173,6 +175,10 @@ extension AppEnvironmentClassifierTests {
     func testFocusedPasteVerificationIsScopedToMonacoAndChromiumCopy() {
         XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(
             bundleIdentifier: "com.google.antigravity-ide",
+            isConfirmedEditorSurface: true,
+            isCopiedBrowserSelection: false))
+        XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.openai.codex",
             isConfirmedEditorSurface: true,
             isCopiedBrowserSelection: false))
         XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(

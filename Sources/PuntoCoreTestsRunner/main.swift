@@ -565,6 +565,12 @@ assertEqual(AppEnvironmentClassifier.terminalPromptTarget(from: "❯ cargo ghbdt
 
 print("\n--- Test 19: Firefox routing & outcome invariants ---")
 // 1. Firefox must NOT use AXSelectedTextRange
+assertEqual(AppEnvironmentClassifier.appKind(bundleIdentifier: "com.openai.codex"), .codeEditor,
+            "Codex app must use code-editor routing")
+assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+    bundleIdentifier: "com.openai.codex",
+    isConfirmedEditorSurface: true,
+    isCopiedBrowserSelection: false), true, "Codex editor paste uses focused-element verification")
 assertEqual(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: "org.mozilla.firefox"), false, "Firefox does NOT support AXSelectedTextRange")
 assertEqual(AppEnvironmentClassifier.supportsAXSelectedTextRange(bundleIdentifier: "com.google.Chrome"), true, "Chrome supports AXSelectedTextRange")
 assertEqual(AppEnvironmentClassifier.isChromium(bundleIdentifier: "com.google.Chrome"), true, "Chrome uses Chromium keyboard fallback")

@@ -86,6 +86,7 @@ public enum AppEnvironmentClassifier {
         "com.todesktop.230313mzl4w4u92",
         "com.google.antigravity",
         "com.google.antigravity-ide",
+        "com.openai.codex",
     ]
 
     /// Ідентичність одного AX-елемента. Навмисно не містить редаговане значення та назву вікна.
