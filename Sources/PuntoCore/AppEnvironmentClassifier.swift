@@ -256,6 +256,12 @@ public enum AppEnvironmentClassifier {
         return chromiumBundleIdentifiers.contains(bundleIdentifier)
     }
 
+    // * -- Перевірка, чи є застосунок штатною Поштою macOS (Apple Mail) --
+    public static func isMail(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return bundleIdentifier == "com.apple.mail"
+    }
+
     // Визначає вузький виняток для компонентів, які не повертають повний AXValue після paste.
     public static func allowsFocusedPasteVerification(
         bundleIdentifier: String?,
@@ -264,6 +270,7 @@ public enum AppEnvironmentClassifier {
     ) -> Bool {
         (isVSCodeFamily(bundleIdentifier: bundleIdentifier) && isConfirmedEditorSurface)
             || (isChromium(bundleIdentifier: bundleIdentifier) && isCopiedBrowserSelection)
+            || isMail(bundleIdentifier: bundleIdentifier)
     }
 
     // * -- Визначення типу застосунку за bundleIdentifier та контекстом елемента --

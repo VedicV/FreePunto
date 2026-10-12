@@ -165,10 +165,17 @@ final class TextIOController {
             } else {
                 target = selectAndCopyWord(element: element, bundle: bundleIdentifier)
             }
-        } else if editable {
-            target = readDirectAX(element: element, editable: true, bundle: bundleIdentifier)
-            if target == nil {
-                target = selectAndCopyWord(element: element, bundle: bundleIdentifier)
+        } else if editable || AppEnvironmentClassifier.isMail(bundleIdentifier: bundleIdentifier) {
+            let hasExplicitSelection = !(stringAttribute(kAXSelectedTextAttribute, from: element)?.isEmpty ?? true)
+            if AppEnvironmentClassifier.isMail(bundleIdentifier: bundleIdentifier) && hasExplicitSelection,
+               let copied = copySelection(), !copied.isEmpty {
+                target = makeTarget(text: copied, original: copied, element: element,
+                                    bundle: bundleIdentifier, origin: .copiedSelection)
+            } else {
+                target = readDirectAX(element: element, editable: true, bundle: bundleIdentifier)
+                if target == nil {
+                    target = selectAndCopyWord(element: element, bundle: bundleIdentifier)
+                }
             }
         }
         guard let target, isTargetCurrent(target) else {
@@ -236,14 +243,19 @@ final class TextIOController {
     }
 
     private func selectAndCopyWord(element: AXUIElement, bundle: String?) -> TextTarget? {
-        guard isEditable(element) || AppEnvironmentClassifier.isChromium(bundleIdentifier: bundle) || AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundle), isCommandContextCurrent() else { return nil }
+        guard isEditable(element)
+            || AppEnvironmentClassifier.isChromium(bundleIdentifier: bundle)
+            || AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundle)
+            || AppEnvironmentClassifier.isMail(bundleIdentifier: bundle),
+            isCommandContextCurrent() else { return nil }
         let firefox = AppEnvironmentClassifier.isFirefox(bundleIdentifier: bundle)
         let allowsUnknownSelection = firefox
             || AppEnvironmentClassifier.isChromium(bundleIdentifier: bundle)
             || AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: bundle)
+            || AppEnvironmentClassifier.isMail(bundleIdentifier: bundle)
         let initialRange = firefox ? nil : selectedRange(element)
         let initialSelected = stringAttribute(kAXSelectedTextAttribute, from: element)
-        // Chromium, Firefox і Monaco можуть повертати nil для обох AX-атрибутів біля каретки.
+        // Chromium, Firefox, Monaco та WebKit/Mail можуть повертати nil для обох AX-атрибутів біля каретки.
         if let initialSelected {
             guard initialSelected.isEmpty else { return nil }
         } else if let initialRange {
@@ -284,7 +296,10 @@ final class TextIOController {
         let ideCopiedSelection = target.origin == .copiedSelection
             && AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: target.bundleIdentifier)
             && isConfirmedEditorSurface(target.element)
-        guard isEditable(target.element) || browserCopiedSelection || ideCopiedSelection else { return .failed }
+
+        let isMail = AppEnvironmentClassifier.isMail(bundleIdentifier: target.bundleIdentifier)
+
+        guard isEditable(target.element) || browserCopiedSelection || ideCopiedSelection || isMail else { return .failed }
         let inserted = replacement + target.suffix
         let expected = target.value == target.original ? inserted : target.value.flatMap { value in
             target.replacementRange.flatMap { range in
@@ -296,6 +311,7 @@ final class TextIOController {
         let isWebOrMonaco = firefox
             || AppEnvironmentClassifier.isChromium(bundleIdentifier: target.bundleIdentifier)
             || AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: target.bundleIdentifier)
+            || isMail
         let element = target.element
         let direct = !isWebOrMonaco && target.origin != .copiedSelection && isSettable(kAXSelectedTextAttribute, element)
         let verifiesFocusedPaste = !direct && AppEnvironmentClassifier.allowsFocusedPasteVerification(
@@ -375,6 +391,7 @@ final class TextIOController {
         let isWebOrIDE = AppEnvironmentClassifier.isChromium(bundleIdentifier: target.bundleIdentifier)
             || AppEnvironmentClassifier.isVSCodeFamily(bundleIdentifier: target.bundleIdentifier)
             || AppEnvironmentClassifier.isFirefox(bundleIdentifier: target.bundleIdentifier)
+            || AppEnvironmentClassifier.isMail(bundleIdentifier: target.bundleIdentifier)
         if !isWebOrIDE, let selection = target.selection, selectedRange(target.element) != selection { return false }
         if let value = target.value, let range = target.replacementRange,
            ReplacementTextContract.substring(value, location: range.location, length: range.length) != target.original { return false }
@@ -612,9 +629,11 @@ final class TextIOController {
         if let role = stringAttribute(kAXRoleAttribute, from: element), role == kAXSecureTextFieldSubrole { return false }
         if stringAttribute(kAXSubroleAttribute, from: element) == kAXSecureTextFieldSubrole { return false }
         if boolAttribute("AXEditable", from: element) == true { return true }
+        if elementAttribute("AXEditableAncestor", from: element) != nil { return true }
         let role = stringAttribute(kAXRoleAttribute, from: element) ?? ""
         if [kAXTextAreaRole, kAXTextFieldRole, kAXComboBoxRole, "AXSearchField"].contains(role) { return true }
         guard boolAttribute(kAXFocusedAttribute, from: element) == true else { return false }
+        if role == "AXWebArea" && isSettable("AXSelectedTextMarkerRange", element) { return true }
         if isSettable(kAXValueAttribute, element) || isSettable(kAXSelectedTextAttribute, element)
             || isSettable(kAXSelectedTextRangeAttribute, element) { return true }
         let webIdentity = [stringAttribute(kAXRoleDescriptionAttribute, from: element),

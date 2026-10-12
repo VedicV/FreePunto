@@ -193,6 +193,12 @@ extension AppEnvironmentClassifierTests {
             bundleIdentifier: "com.apple.Safari",
             isConfirmedEditorSurface: false,
             isCopiedBrowserSelection: true))
+        XCTAssertTrue(AppEnvironmentClassifier.isMail(bundleIdentifier: "com.apple.mail"))
+        XCTAssertFalse(AppEnvironmentClassifier.isMail(bundleIdentifier: "com.apple.Safari"))
+        XCTAssertTrue(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+            bundleIdentifier: "com.apple.mail",
+            isConfirmedEditorSurface: false,
+            isCopiedBrowserSelection: false))
     }
 
     func testTerminalPromptTargetCarriesBackspaceCount() {

@@ -588,6 +588,12 @@ assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
     bundleIdentifier: "com.apple.Safari",
     isConfirmedEditorSurface: false,
     isCopiedBrowserSelection: true), false, "Unlisted browser does not use the Chromium exception")
+assertEqual(AppEnvironmentClassifier.isMail(bundleIdentifier: "com.apple.mail"), true, "Mail bundle recognized")
+assertEqual(AppEnvironmentClassifier.isMail(bundleIdentifier: "com.google.Chrome"), false, "Chrome is not Mail")
+assertEqual(AppEnvironmentClassifier.allowsFocusedPasteVerification(
+    bundleIdentifier: "com.apple.mail",
+    isConfirmedEditorSurface: false,
+    isCopiedBrowserSelection: false), true, "Mail allows focused-paste verification")
 
 // 2. Strategy for Firefox editable fields must start with Cmd+C
 let ffKind = AppEnvironmentClassifier.appKind(bundleIdentifier: "org.mozilla.firefox")
